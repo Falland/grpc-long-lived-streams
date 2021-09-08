@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package proto.helloworld.v1;
+
+option java_package = "io.gprc.longlivedstreams.proto.helloworld.v1";
+option java_multiple_files = true;
+option java_outer_classname = "HelloWorldService";
+
+service HelloWorld {
+    rpc Say (Hello) returns (World) {
+    }
+
+    rpc SayServerStreaming (Hello) returns (stream World) {
+    }
+
+    rpc SayClientStreaming (stream Hello) returns (World) {
+    }
+
+    rpc SayBiDi (stream Hello) returns (stream World) {
+    }
+}
+
+message Hello {
+    string message = 1;
+    string clientId = 2;
+    bool isThrottling = 3;
+}
+
+message World {
+    string reply = 1;
+    bytes payload = 2;
+    int32 group = 3;
+}
+
+
