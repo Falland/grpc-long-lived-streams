@@ -6,12 +6,6 @@ import javax.annotation.Nonnull;
 
 public interface GrpcSubscription<U> {
 
-    String getAddress();
-
-    SubscriptionType getType();
-
-    String getClientId();
-
     void processUpdate(U update);
 
     boolean isActive();
@@ -19,6 +13,12 @@ public interface GrpcSubscription<U> {
     void onError(Throwable t);
 
     void onCompleted();
+
+    String getAddress();
+
+    SubscriptionType getType();
+
+    String getClientId();
 
     /**
      * Returns the subscription that filters updates according to the predicate provided

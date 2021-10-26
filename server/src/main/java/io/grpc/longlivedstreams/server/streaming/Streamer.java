@@ -128,6 +128,16 @@ public class Streamer<U> {
         subscribe(createFullSubscription(clientId, observer));
     }
 
+    /**
+     * Creates and registers the Persistent subscription.
+     * Make sure you don't create two subscriptions on one observer. This may lead to incorrect behaviour on the clint side.
+     * @param clientId - the identification of the client
+     * @param observer - the gRPC observer object provided from the method call site
+     */
+    public void subscribePersistent(String clientId, StreamObserver<U> observer) {
+        throw new UnsupportedOperationException("The operation is currently unsupported");
+    }
+
     public final boolean hasSubscriptions() {
         return !clientAddressToStream.isEmpty();
     }

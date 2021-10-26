@@ -22,7 +22,7 @@ public class ThrottlingServerNaiveClient {
         server.start();
 
         NaiveClient client = new NaiveClient(port);
-        client.subscribe(true);
+        client.subscribe();
         Thread.sleep(1000);
         for (int i = 0; i < 10; i++) {
             streamingService.publishMessage(World.newBuilder()

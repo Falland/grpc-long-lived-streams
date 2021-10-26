@@ -2,8 +2,10 @@ package io.grpc.longlivedstreams.examples.apps;
 
 import com.google.protobuf.ByteString;
 import io.gprc.longlivedstreams.proto.helloworld.v1.World;
+import io.gprc.longlivedstreams.proto.pricing.v1.PriceUpdate;
 import io.grpc.longlivedstreams.examples.GrpcServer;
 import io.grpc.longlivedstreams.examples.NaiveClient;
+import io.grpc.longlivedstreams.examples.NaivePricingService;
 import io.grpc.longlivedstreams.examples.NaiveService;
 
 import java.io.IOException;
@@ -18,11 +20,12 @@ public class NaiveServerNaiveClient {
     public static void main(String[] args) throws IOException, InterruptedException {
         int port = findFreePort();
         NaiveService naiveService = new NaiveService();
+        NaivePricingService naivePricingService = new NaivePricingService();
         GrpcServer server = new GrpcServer(port, List.of(naiveService.getGrpcService()));
         server.start();
 
         NaiveClient client = new NaiveClient(port);
-        client.subscribe(false);
+        client.subscribe();
         Thread.sleep(1000);
         for (int i = 0; i < 10; i++) {
             naiveService.publishMessage(World.newBuilder()
@@ -38,6 +41,7 @@ public class NaiveServerNaiveClient {
         for (int i = 0; i < 100_000; i++) {
             naiveService.publishMessage(World.newBuilder()
                     .setPayload(ByteString.copyFrom(payload)).build());
+            naivePricingService.publishMessage(PriceUpdate.newBuilder().build());
         }
         client.awaitOnComplete(Duration.ofSeconds(60));
         System.out.println("Received messages total : " + client.getMessages().size());

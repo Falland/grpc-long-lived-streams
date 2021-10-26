@@ -22,7 +22,7 @@ public class FullFlowServerNaiveClient {
         server.start();
 
         NaiveClient client = new NaiveClient(port);
-        client.subscribe(false);
+        client.subscribe();
         Thread.sleep(1000);
         for (int i = 0; i < 10; i++) {
             streamingService.publishMessage(World.newBuilder()
