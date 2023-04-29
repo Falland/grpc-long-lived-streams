@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 package proto.pricing.v1;
-option java_package = "io.gprc.longlivedstreams.proto.pricing.v1";
+option java_package = "com.falland.gprc.longlivedstreams.proto.pricing.v1";
 option java_multiple_files = true;
 option java_outer_classname = "PricingProvider";
 

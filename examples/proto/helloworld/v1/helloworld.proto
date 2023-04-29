@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package proto.helloworld.v1;
 
-option java_package = "io.gprc.longlivedstreams.proto.helloworld.v1";
+option java_package = "com.falland.gprc.longlivedstreams.proto.helloworld.v1";
 option java_multiple_files = true;
 option java_outer_classname = "HelloWorldService";
 
