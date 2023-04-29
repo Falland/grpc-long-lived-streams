@@ -26,15 +26,15 @@ jobs:
          id: dev_version
          run: "echo VERSION=$(mvn -q -Dexec.executable=echo -Dexec.args='${project.version}' --non-recursive exec:exec) >> $GITHUB_OUTPUT"
 
-      -  name: Maven release:prepare from master
-         if: github.ref == 'refs/heads/master'
+      -  name: Maven release:prepare from main
+         if: github.ref == 'refs/heads/main'
          run: mvn --no-transfer-progress -Dusername=$GIT_USERNAME -Dpassword=$GIT_PASSWORD release:prepare -B --file pom.xml
          env:
             GIT_USERNAME: 'Faland'
             GIT_PASSWORD: '${{ secrets.GITHUB_TOKEN }}'
 
       -  name: Maven release:prepare from branch
-         if: github.ref != 'refs/heads/master'
+         if: github.ref != 'refs/heads/main'
          run: mvn --no-transfer-progress -Dusername=$GIT_USERNAME -Dpassword=$GIT_PASSWORD -DreleaseVersion=$(date +'%m%d')${{ steps.short_hash.outputs.HASH }} -DdevelopmentVersion=${{ steps.dev_version.outputs.VERSION }} release:prepare -B --file pom.xml
          env:
             GIT_USERNAME: 'Falland'
