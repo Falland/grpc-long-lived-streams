@@ -11,8 +11,8 @@ jobs:
            persist-credentials: false
       -  uses: oleksiyrudenko/gha-git-credentials@v2-latest
          with:
-           user.name: 'Falland'
-           user.email: 'falland42@gmail.com'
+           name: 'Falland'
+           email: 'falland42@gmail.com'
            actor: 'Falland'
            token: '${{ secrets.PERSONAL_TOKEN }}'
       -  name: Set up JDK 17
