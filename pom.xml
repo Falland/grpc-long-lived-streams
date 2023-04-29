@@ -14,6 +14,7 @@
         <module>server</module>
         <module>client</module>
     </modules>
+         
     <properties>
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
@@ -35,6 +36,14 @@
         <jacoco-maven-plugin.version>0.8.8</jacoco-maven-plugin.version>   
         <maven-failsafe-plugin.version>3.0.0-M6</maven-failsafe-plugin.version>
     </properties>
+         
+    <scm>
+      <connection>scm:git:https://github.com/Falland/grpc-long-lived-streams.git</connection>
+      <developerConnection>scm:git:https://github.com/Falland/grpc-long-lived-streams.git</developerConnection>
+      <url>https://github.com/Falland/grpc-long-lived-streams.git</url>
+      <tag>HEAD</tag>
+    </scm>     
+         
     <dependencyManagement>
         <dependencies>
             <dependency>
