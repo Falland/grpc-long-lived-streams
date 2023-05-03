@@ -24,7 +24,7 @@ jobs:
         uses: ncipollo/release-action@v1
         with:
           allowUpdates: true
-          artifacts: "${{ github.workspace }}/target/*.jar"
+          artifacts: "${{ github.workspace }}/server/target/*.jar, ${{ github.workspace }}/client/target/*.jar, ${{ github.workspace }}/examples/target/*.jar"
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: Publish to the Maven Central Repository
         run: |
