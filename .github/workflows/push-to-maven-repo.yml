@@ -19,11 +19,12 @@ jobs:
       - name: build artifact
         run: mvn clean package
       - name: Create release
-        uses: ncipollo/release-action@v1
+        uses: ncipollo/release-action@v2
         with:
           allowUpdates: true
           artifacts: "${{ github.workspace }}/target/*.jar"
           token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
       - name: Publish to the Maven Central Repository
         run: |
           mvn \
