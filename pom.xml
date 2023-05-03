@@ -7,6 +7,34 @@
     <packaging>pom</packaging>
     <version>1.0-SNAPSHOT</version>
 
+    <name>Long Lived Java gRPC Streams</name>
+    <description>The project is a harness for Java gRPC long-lived streams.
+        Long-lived means the stream does not have a clear definition of size once it's started.
+        The project solves common problems of such streams on for server and client sides.
+    </description>
+    <url>https://github.com/Falland/grpc-long-lived-streams</url>
+
+    <licenses>
+        <license>
+            <name>MIT License</name>
+            <url>http://www.opensource.org/licenses/mit-license.php</url>
+        </license>
+    </licenses>
+
+    <scm>
+        <connection>scm:git:https://github.com/Falland/grpc-long-lived-streams.git</connection>
+        <developerConnection>scm:git:https://github.com/Falland/grpc-long-lived-streams.git</developerConnection>
+        <url>https://github.com/Falland/grpc-long-lived-streams.git</url>
+        <tag>v1.0</tag>
+    </scm>
+
+    <developers>
+        <developer>
+            <name>Yury Vasyutinskiy</name>
+            <email>falland42@gmail.com</email>
+        </developer>
+    </developers>
+
     <modules>
         <module>examples</module>
         <module>server</module>
@@ -35,25 +63,7 @@
         <maven-failsafe-plugin.version>3.0.0-M6</maven-failsafe-plugin.version>
     </properties>
 
-    <scm>
-        <connection>scm:git:https://github.com/Falland/grpc-long-lived-streams.git</connection>
-        <developerConnection>scm:git:https://github.com/Falland/grpc-long-lived-streams.git</developerConnection>
-        <url>https://github.com/Falland/grpc-long-lived-streams.git</url>
-        <tag>v1.0</tag>
-    </scm>
-
-    <developers>
-        <developer>
-            <name>Yury Vasyutinskiy</name>
-            <email>falland42@gmail.com</email>
-        </developer>
-    </developers>
-
     <distributionManagement>
-        <snapshotRepository>
-            <id>ossrh</id>
-            <url>https://oss.sonatype.org/content/repositories/snapshots</url>
-        </snapshotRepository>
         <repository>
             <id>ossrh</id>
             <url>https://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
@@ -304,6 +314,22 @@
                 </executions>
             </plugin>
             <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <version>3.2.0</version>
+                <configuration>
+                    <javadocExecutable>${java.home}/bin/javadoc</javadocExecutable>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>attach-javadoc</id>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
                 <groupId>org.sonatype.plugins</groupId>
                 <artifactId>nexus-staging-maven-plugin</artifactId>
                 <version>1.6.6</version>
@@ -311,7 +337,7 @@
                 <configuration>
                     <serverId>ossrh</serverId>
                     <nexusUrl>https://oss.sonatype.org/</nexusUrl>
-                    <autoReleaseAfterClose>false</autoReleaseAfterClose>
+                    <autoReleaseAfterClose>true</autoReleaseAfterClose>
                 </configuration>
             </plugin>
         </plugins>
