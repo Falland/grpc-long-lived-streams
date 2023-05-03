@@ -1,6 +1,8 @@
 name: Push to central
 on:
-  workflow_dispatch:
+  create:
+    tags:
+      - v*
 jobs:
   publish:
     runs-on: ubuntu-latest
