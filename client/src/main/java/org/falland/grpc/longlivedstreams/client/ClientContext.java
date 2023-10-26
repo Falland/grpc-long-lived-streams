@@ -2,16 +2,20 @@ package org.falland.grpc.longlivedstreams.client;
 
 import io.grpc.internal.GrpcUtil;
 
+import java.util.concurrent.Executor;
+
 public interface ClientContext {
     String hostName();
 
     int port();
 
-    String getClientName();
+    Executor executor();
+
+    String clientName();
 
     boolean usePlaintext();
 
-    default int getMaxInboundMessageSize() {
+    default int maxInboundMessageSize() {
         return GrpcUtil.DEFAULT_MAX_MESSAGE_SIZE;
     }
 

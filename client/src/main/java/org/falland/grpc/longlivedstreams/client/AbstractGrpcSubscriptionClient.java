@@ -42,7 +42,7 @@ public abstract class AbstractGrpcSubscriptionClient<U extends AbstractMessage> 
         this.retrySubscriptionDuration = retrySubscriptionDuration;
         this.connectionManagerThread = Executors.newSingleThreadScheduledExecutor(new ThreadFactoryBuilder()
                                                                                           .setNameFormat(
-                                                                                                  clientContext.getClientName()
+                                                                                                  clientContext.clientName()
                                                                                                   + "-connection-manager-thread-%d")
                                                                                           .build());
     }
@@ -83,17 +83,20 @@ public abstract class AbstractGrpcSubscriptionClient<U extends AbstractMessage> 
     }
 
     @SuppressWarnings("rawtypes")
-    private void openChannel() {
+    protected void openChannel() {
         ManagedChannelBuilder channelBuilder =
                 ManagedChannelBuilder.forAddress(clientContext.hostName(), clientContext.port())
-                        .maxInboundMessageSize(clientContext.getMaxInboundMessageSize());
+                        .maxInboundMessageSize(clientContext.maxInboundMessageSize());
         if (clientContext.usePlaintext()) {
             channelBuilder.usePlaintext();
+        }
+        if (clientContext.executor() != null) {
+            channelBuilder.executor(clientContext.executor());
         }
         this.reconnectionAttempts.set(clientContext.maxAttemptsBeforeReconnect());
         this.firstSubscriptionAttempt.set(true);
         this.channel = channelBuilder.build();
-        logger = new ChannelStateListenerLogger(channel, true, clientContext.getClientName());
+        logger = new ChannelStateListenerLogger(channel, true, clientContext.clientName());
         logger.addGrpcConnectionListener(this);
         if (!connectionManagerThread.isShutdown()) {
             connectionManagerThread.submit(() -> safeSubscribe(channel));
@@ -119,7 +122,7 @@ public abstract class AbstractGrpcSubscriptionClient<U extends AbstractMessage> 
                 subscribe(channel);
             }
         } catch (Exception e) {
-            LOGGER.error("Error during subscription for client {}. Reconnecting", clientContext.getClientName(), e);
+            LOGGER.error("Error during subscription for client {}. Reconnecting", clientContext.clientName(), e);
             scheduleSafeResubscribe(channel);
         }
     }
@@ -148,7 +151,7 @@ public abstract class AbstractGrpcSubscriptionClient<U extends AbstractMessage> 
         try {
             unsubscribe();
         } catch (Exception e) {
-            LOGGER.error("Error during un-subscription for client {}. Ignoring", clientContext.getClientName(), e);
+            LOGGER.error("Error during un-subscription for client {}. Ignoring", clientContext.clientName(), e);
         } finally {
             subscribePermits.drainPermits();
             subscribePermits.release();
@@ -166,7 +169,7 @@ public abstract class AbstractGrpcSubscriptionClient<U extends AbstractMessage> 
     }
 
     public final StreamObserver<U> createResponseObserver(Channel stubChannel) {
-        return new GrpcStreamObserver(clientContext.getClientName(), stubChannel);
+        return new GrpcStreamObserver(clientContext.clientName(), stubChannel);
     }
 
     @Override

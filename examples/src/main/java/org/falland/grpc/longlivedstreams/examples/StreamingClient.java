@@ -22,7 +22,7 @@ public class StreamingClient extends AbstractGrpcSubscriptionClient<World> {
 
     @Override
     protected void subscribe(Channel channel) {
-        Hello request = Hello.newBuilder().setClientId(getClientContext().getClientName())
+        Hello request = Hello.newBuilder().setClientId(getClientContext().clientName())
                 .setIsThrottling(isThrottling).build();
         HelloWorldGrpc.newStub(channel).sayServerStreaming(request, this.createResponseObserver(channel));
     }

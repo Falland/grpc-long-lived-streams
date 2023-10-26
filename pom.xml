@@ -54,8 +54,7 @@
         <slf4j.version>1.7.32</slf4j.version>
         <generated-sources.directory>${project.build.directory}/generated-sources</generated-sources.directory>
         <!-- Tests properties -->
-        <junit.version>5.5.2</junit.version>
-        <jupiter.version>5.2.0</jupiter.version>
+        <junit.version>5.10.0</junit.version>
         <maven-surefire-plugin.version>2.22.1</maven-surefire-plugin.version>
         <mockito.version>3.3.3</mockito.version>
         <google.truth.version>1.0.1</google.truth.version>
@@ -322,7 +321,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-javadoc-plugin</artifactId>
-                <version>3.2.0</version>
+                <version>3.6.0</version>
                 <configuration>
                     <javadocExecutable>${java.home}/bin/javadoc</javadocExecutable>
                 </configuration>
