@@ -2,7 +2,7 @@ package org.falland.grpc.longlivedstreams.server.streaming;
 
 import com.google.protobuf.AbstractMessage;
 import io.grpc.stub.ServerCallStreamObserver;
-import org.falland.grpc.longlivedstreams.core.subscription.SubscriptionType;
+import org.falland.grpc.longlivedstreams.core.streams.StreamType;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,11 +31,11 @@ class StreamerTest {
     private final SubscriptionDescriptor fullDescriptor = new SubscriptionDescriptor(
             fullKey.address(),
             fullKey.clientId(),
-            SubscriptionType.FULL_FLOW);
+            StreamType.FULL_FLOW);
     private final SubscriptionDescriptor throttlingDescriptor = new SubscriptionDescriptor(
             throttlingKey.address(),
             throttlingKey.clientId(),
-            SubscriptionType.THROTTLING);
+            StreamType.THROTTLING);
     private Streamer<AbstractMessage> underTest;
     @Mock
     private ServerCallStreamObserver<AbstractMessage> observerFull;
@@ -72,20 +72,20 @@ class StreamerTest {
 
     @Test
     public void testCreateSubscription_shouldCreateFullFlowSubscription_whenIsForFullFlow() {
-        ServerGrpcSubscription<AbstractMessage> subscription = underTest.createFullSubscription(
+        ServerGrpcStream<AbstractMessage> subscription = underTest.createFullSubscription(
                 fullKey,
                 observerFull);
         assertEquals(fullKey, subscription.subscriptionKey());
-        Assertions.assertEquals(SubscriptionType.FULL_FLOW, subscription.type());
+        Assertions.assertEquals(StreamType.FULL_FLOW, subscription.type());
         assertTrue(subscription.isActive());
     }
 
     @Test
     public void testCreateSubscription_shouldCreateThrottlingSubscription_whenIsForThrottling() {
-        ServerGrpcSubscription<AbstractMessage> subscription = underTest.createThrottlingSubscription(
+        ServerGrpcStream<AbstractMessage> subscription = underTest.createThrottlingSubscription(
                 throttlingKey, observerFull, message -> message);
         assertEquals(throttlingKey, subscription.subscriptionKey());
-        assertEquals(SubscriptionType.THROTTLING, subscription.type());
+        assertEquals(StreamType.THROTTLING, subscription.type());
         assertTrue(subscription.isActive());
     }
 
@@ -138,7 +138,7 @@ class StreamerTest {
         underTest.subscribeFullFlow(customKey, observerFull);
         verify(observerFull, times(1)).onCompleted();
         assertEquals(1, underTest.getSubscriptionDescriptors().size());
-        SubscriptionDescriptor customDescriptor = new SubscriptionDescriptor(addressString, "test", SubscriptionType.THROTTLING);
+        SubscriptionDescriptor customDescriptor = new SubscriptionDescriptor(addressString, "test", StreamType.THROTTLING);
         assertTrue(underTest.getSubscriptionDescriptors()
                         .stream()
                         .anyMatch(customDescriptor::equals),
@@ -147,8 +147,8 @@ class StreamerTest {
 
     @Test
     public void testSubscribe_shouldCloseNew_whenSubscriptionsHaveSameKey() {
-        ServerGrpcSubscription<AbstractMessage> subscription1 = underTest.createFullSubscription(fullKey, observerFull);
-        ServerGrpcSubscription<AbstractMessage> subscription2 = underTest.createFullSubscription(fullKey, observerFull2);
+        ServerGrpcStream<AbstractMessage> subscription1 = underTest.createFullSubscription(fullKey, observerFull);
+        ServerGrpcStream<AbstractMessage> subscription2 = underTest.createFullSubscription(fullKey, observerFull2);
 
         underTest.subscribe(subscription1);
         underTest.subscribe(subscription2);
@@ -164,7 +164,7 @@ class StreamerTest {
 
     @Test
     public void testSubscribe_shouldNotCloseNew_whenSubscriptionsAreExactlySame() {
-        ServerGrpcSubscription<AbstractMessage> subscription1 = underTest.createFullSubscription(fullKey, observerFull);
+        ServerGrpcStream<AbstractMessage> subscription1 = underTest.createFullSubscription(fullKey, observerFull);
 
         underTest.subscribe(subscription1);
         underTest.subscribe(subscription1);

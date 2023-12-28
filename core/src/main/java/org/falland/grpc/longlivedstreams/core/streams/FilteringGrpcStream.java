@@ -1,26 +1,28 @@
-package org.falland.grpc.longlivedstreams.core.subscription;
+package org.falland.grpc.longlivedstreams.core.streams;
+
+import org.falland.grpc.longlivedstreams.core.GrpcStream;
 
 import java.util.function.Predicate;
 
-public class FilteringGrpcSubscription<U> implements GrpcSubscription<U> {
+public class FilteringGrpcStream<U> implements GrpcStream<U> {
 
-    private final GrpcSubscription<U> delegate;
+    private final GrpcStream<U> delegate;
     private final Predicate<U> filter;
 
-    public FilteringGrpcSubscription(GrpcSubscription<U> delegate, Predicate<U> filter) {
+    public FilteringGrpcStream(GrpcStream<U> delegate, Predicate<U> filter) {
         this.delegate = delegate;
         this.filter = filter;
     }
 
     @Override
-    public SubscriptionType type() {
+    public StreamType type() {
         return delegate.type();
     }
 
     @Override
-    public void processUpdate(U update) {
+    public void onNext(U update) {
         if (filter.test(update)) {
-            delegate.processUpdate(update);
+            delegate.onNext(update);
         }
     }
 

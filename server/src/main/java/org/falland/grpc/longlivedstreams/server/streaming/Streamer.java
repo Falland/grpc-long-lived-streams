@@ -3,11 +3,11 @@ package org.falland.grpc.longlivedstreams.server.streaming;
 import io.grpc.stub.ServerCallStreamObserver;
 import io.grpc.stub.StreamObserver;
 import org.falland.grpc.longlivedstreams.core.util.ThreadFactoryImpl;
-import org.falland.grpc.longlivedstreams.core.subscription.FullFlowSubscription;
-import org.falland.grpc.longlivedstreams.core.subscription.GrpcSubscription;
-import org.falland.grpc.longlivedstreams.core.SubscriptionObserver;
-import org.falland.grpc.longlivedstreams.core.subscription.SubscriptionType;
-import org.falland.grpc.longlivedstreams.core.subscription.ThrottlingSubscription;
+import org.falland.grpc.longlivedstreams.core.streams.FullFlowStream;
+import org.falland.grpc.longlivedstreams.core.GrpcStream;
+import org.falland.grpc.longlivedstreams.core.ControlledStreamObserver;
+import org.falland.grpc.longlivedstreams.core.streams.StreamType;
+import org.falland.grpc.longlivedstreams.core.streams.ThrottlingStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -35,7 +35,7 @@ import java.util.stream.Collectors;
  */
 public class Streamer<U> {
     private static final Logger LOGGER = LoggerFactory.getLogger(Streamer.class);
-    private final Map<SubscriptionKey, ServerGrpcSubscription<U>> subscriptionsByKey = new ConcurrentHashMap<>();
+    private final Map<SubscriptionKey, ServerGrpcStream<U>> subscriptionsByKey = new ConcurrentHashMap<>();
     private final ScheduledExecutorService throttlingExecutor;
     protected final String serviceName;
     protected final int queueSize;
@@ -51,16 +51,16 @@ public class Streamer<U> {
     }
 
     /**
-     * Creates the Full Flow subscription. You can use it to send the snapshot prior to finalize the subscription with {@link Streamer#subscribe(ServerGrpcSubscription)}
+     * Creates the Full Flow subscription. You can use it to send the snapshot prior to finalize the subscription with {@link Streamer#subscribe(ServerGrpcStream)}
      * Make sure you don't create two subscriptions on one observer. This may lead to incorrect behaviour on the clint side.
      *
      * @param observer - the gRPC observer object provided from the method call site
-     * @return GrpcSubscription with the type {@link SubscriptionType#FULL_FLOW}
+     * @return GrpcSubscription with the type {@link StreamType#FULL_FLOW}
      */
-    public ServerGrpcSubscription<U> createFullSubscription(SubscriptionKey key, StreamObserver<U> observer) {
-        SubscriptionObserver<U> subscriptionObserver = createObserver(observer);
-        return new ServerGrpcSubscription<>(key,
-                FullFlowSubscription.builder(subscriptionObserver)
+    public ServerGrpcStream<U> createFullSubscription(SubscriptionKey key, StreamObserver<U> observer) {
+        return new ServerGrpcStream<>(key,
+                FullFlowStream.<U>builder()
+                        .withObserver(createObserver(observer))
                         .withQueueSize(queueSize)
                         .withCoolDownDuration(coolDownDuration)
                         .withThreadFactory(new ThreadFactoryImpl(getNamePrefix(key)))
@@ -72,19 +72,20 @@ public class Streamer<U> {
     }
 
     /**
-     * Creates the Throttling subscription. You can use it to send the snapshot prior to finalize the subscription with {@link Streamer#subscribe(ServerGrpcSubscription)}
+     * Creates the Throttling subscription. You can use it to send the snapshot prior to finalize the subscription with {@link Streamer#subscribe(ServerGrpcStream)}
      * Make sure you don't create two subscriptions on one observer. This may lead to incorrect behaviour on the clint side.
      *
      * @param observer               - the gRPC observer object provided from the method call site
-     * @param compactionKeyExtractor - the key extraction function that is going to be used for key-based compaction
+     * @param keyExtractor - the key extraction function that is going to be used for key-based compaction
      * @param <K>                    - the type of the key
-     * @return GrpcSubscription with the type {@link SubscriptionType#THROTTLING}
+     * @return GrpcSubscription with the type {@link StreamType#THROTTLING}
      */
-    public <K> ServerGrpcSubscription<U> createThrottlingSubscription(SubscriptionKey key, StreamObserver<U> observer,
-                                                                      Function<U, K> compactionKeyExtractor) {
-        SubscriptionObserver<U> subscriptionObserver = createObserver(observer);
-        return new ServerGrpcSubscription<>(key,
-                ThrottlingSubscription.builder(subscriptionObserver, compactionKeyExtractor)
+    public <K> ServerGrpcStream<U> createThrottlingSubscription(SubscriptionKey key, StreamObserver<U> observer,
+                                                                Function<U, K> keyExtractor) {
+        return new ServerGrpcStream<>(key,
+                ThrottlingStream.<U, K>builder()
+                        .withObserver(createObserver(observer))
+                        .withKeyExtractor(keyExtractor)
                         .withCoolDownDuration(coolDownDuration)
                         .withExecutor(throttlingExecutor)
                         .build());
@@ -97,7 +98,7 @@ public class Streamer<U> {
      *
      * @param subscription - subscription to register
      */
-    public void subscribe(ServerGrpcSubscription<U> subscription) {
+    public void subscribe(ServerGrpcStream<U> subscription) {
         if (subscription == null) {
             throw new IllegalArgumentException("Subscription can not be null.");
         }
@@ -167,7 +168,7 @@ public class Streamer<U> {
 
     public final void completeStreamer() {
         throttlingExecutor.shutdownNow();
-        subscriptionsByKey.values().forEach(GrpcSubscription::onCompleted);
+        subscriptionsByKey.values().forEach(GrpcStream::onCompleted);
         subscriptionsByKey.clear();
     }
 
@@ -181,22 +182,22 @@ public class Streamer<U> {
         completeStreamer();
     }
 
-    protected void handleDoubleSubscription(ServerGrpcSubscription<U> subscription) {
-        GrpcSubscription<U> previous = subscriptionsByKey.putIfAbsent(subscription.subscriptionKey(), subscription);
+    protected void handleDoubleSubscription(ServerGrpcStream<U> subscription) {
+        GrpcStream<U> previous = subscriptionsByKey.putIfAbsent(subscription.subscriptionKey(), subscription);
         if (previous != null && previous != subscription) {
             //We close new and not the previous stream
             closeSubscription(subscription);
         }
     }
 
-    protected SubscriptionObserver<U> createObserver(StreamObserver<U> observer) {
+    protected ControlledStreamObserver<U> createObserver(StreamObserver<U> observer) {
         if (observer instanceof ServerCallStreamObserver<U>) {
-            return new ServerSubscriptionObserver<>((ServerCallStreamObserver<U>) observer);
+            return new ServerControlledStreamObserver<>((ServerCallStreamObserver<U>) observer);
         }
         throw new IllegalArgumentException("Observer is of unknown type: [" + observer.getClass() + "]");
     }
 
-    private void closeSubscription(ServerGrpcSubscription<U> subscription) {
+    private void closeSubscription(ServerGrpcStream<U> subscription) {
         if (subscription != null) {
             var key = subscription.subscriptionKey();
             try {
@@ -214,7 +215,7 @@ public class Streamer<U> {
         for (var subscription : subscriptionsByKey.values()) {
             try {
                 if (subscription.isActive()) {
-                    subscription.processUpdate(update);
+                    subscription.onNext(update);
                 } else {
                     //the subscription is closed by now we can remove it
                     subscriptionsByKey.remove(subscription.subscriptionKey(), subscription);

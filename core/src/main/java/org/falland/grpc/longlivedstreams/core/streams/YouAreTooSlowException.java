@@ -1,4 +1,4 @@
-package org.falland.grpc.longlivedstreams.core.subscription;
+package org.falland.grpc.longlivedstreams.core.streams;
 
 import io.grpc.Status;
 import io.grpc.Status.Code;

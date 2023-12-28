@@ -14,9 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
-import java.util.Collections;
 import java.util.EnumSet;
-import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -36,7 +34,7 @@ public abstract class AbstractGrpcSubscriptionClient<U extends AbstractMessage> 
     private static final Logger LOGGER = LoggerFactory.getLogger(AbstractGrpcSubscriptionClient.class);
     public static final EnumSet<Code> UNRECOVERABLE_CODES = EnumSet.of(UNIMPLEMENTED, UNAUTHENTICATED, FAILED_PRECONDITION, PERMISSION_DENIED, INVALID_ARGUMENT, OUT_OF_RANGE);
     private final ClientContext clientContext;
-    private final List<UpdateProcessor<U>> processors;
+    private final UpdateProcessor<U> processor;
     private final ScheduledExecutorService connectionManagerThread;
     private final Duration retrySubscriptionDuration;
     //We can allow only one subscription per client
@@ -50,10 +48,10 @@ public abstract class AbstractGrpcSubscriptionClient<U extends AbstractMessage> 
     private volatile boolean isActive = true;
 
     protected AbstractGrpcSubscriptionClient(ClientContext clientContext,
-                                             List<UpdateProcessor<U>> processors,
+                                             UpdateProcessor<U> processor,
                                              Duration retrySubscriptionDuration) {
         this.clientContext = clientContext;
-        this.processors = Collections.unmodifiableList(processors);
+        this.processor = processor;
         this.retrySubscriptionDuration = retrySubscriptionDuration;
         this.connectionManagerThread = Executors.newSingleThreadScheduledExecutor(
                 new ThreadFactoryImpl(clientContext.clientName() + "-connection-manager-thread-"));
@@ -203,29 +201,24 @@ public abstract class AbstractGrpcSubscriptionClient<U extends AbstractMessage> 
 
         @Override
         public void onNext(U update) {
-            if (LOGGER.isDebugEnabled()) {
-                LOGGER.debug("Received subscription response {}", update);
-            }
-            //noinspection ForLoopReplaceableByForEach
-            for (int i = 0; i < processors.size(); i++) {
-                try {
-                    processors.get(i).processUpdate(update);
-                } catch (Exception e) {
-                    LOGGER.error("Error while processing update {} with processor {}", update, processors.get(i), e);
-                }
+            LOGGER.debug("Received subscription response {}", update);
+            try {
+               processor.processUpdate(update);
+            } catch (Exception e) {
+                LOGGER.error("Error while processing update {}", update, e);
             }
         }
 
         @Override
         public void onError(Throwable throwable) {
             if (isRecoverable(throwable)) {
-                LOGGER.debug("Received error for subscription. Resubscribing channel {} for client {}", channel,
-                        clientName, throwable);
+                LOGGER.debug("Received error for subscription. Resubscribing channel {} for client {}",
+                        channel, clientName, throwable);
                 scheduleSafeResubscribe(channel);
             } else {
                 isActive = false;
-                LOGGER.error("Received unrecoverable error. Stopping channel {} for client {}.", channel, clientName,
-                        throwable);
+                LOGGER.error("Received unrecoverable error. Stopping channel {} for client {}.",
+                        channel, clientName, throwable);
                 onUnrecoverableError(throwable);
                 submitSafeUnsubscribe();
             }
@@ -233,8 +226,8 @@ public abstract class AbstractGrpcSubscriptionClient<U extends AbstractMessage> 
 
         @Override
         public void onCompleted() {
-            LOGGER.info("Received stream complete for subscription. Resubscribing channel {} for client {}", channel,
-                    clientName);
+            LOGGER.info("Received stream complete for subscription. Resubscribing channel {} for client {}",
+                    channel, clientName);
             scheduleSafeResubscribe(channel);
         }
 
@@ -249,7 +242,7 @@ public abstract class AbstractGrpcSubscriptionClient<U extends AbstractMessage> 
                 Code code = statusException.getStatus().getCode();
                 return !unrecoverableCodes().contains(code);
             }
-            //If not status exception then it's either internal in client or in custom logic - should be recoverable
+            //If not status exception then we consider the error recoverable
             return true;
         }
     }
