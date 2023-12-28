@@ -1,4 +1,4 @@
-package org.falland.grpc.longlivedstreams.server.subscription;
+package org.falland.grpc.longlivedstreams.core.subscription;
 
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -14,11 +14,7 @@ public interface GrpcSubscription<U> {
 
     void onCompleted();
 
-    String getAddress();
-
-    SubscriptionType getType();
-
-    String getClientId();
+    SubscriptionType type();
 
     /**
      * Returns the subscription that filters updates according to the predicate provided

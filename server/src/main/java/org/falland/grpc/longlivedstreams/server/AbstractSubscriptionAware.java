@@ -4,7 +4,9 @@ import org.falland.grpc.longlivedstreams.server.address.AddressInterceptor;
 import io.grpc.BindableService;
 import io.grpc.ServerInterceptors;
 import io.grpc.ServerServiceDefinition;
+import org.falland.grpc.longlivedstreams.server.streaming.SubscriptionKey;
 
+import java.net.SocketAddress;
 import java.time.Duration;
 
 public abstract class AbstractSubscriptionAware implements ServerServiceDefinitionWrapper {
@@ -37,6 +39,12 @@ public abstract class AbstractSubscriptionAware implements ServerServiceDefiniti
         return ServerInterceptors.intercept(getGrpcService(), new AddressInterceptor());
     }
 
+    public SubscriptionKey getSubscriptionKey(String clientId) {
+        SocketAddress address = AddressInterceptor.ADDRESS_KEY.get();
+        return new SubscriptionKey(address == null ? "null" : address.toString(), clientId);
+    }
+
+    @SuppressWarnings("unused")
     public void stop() {
     }
 

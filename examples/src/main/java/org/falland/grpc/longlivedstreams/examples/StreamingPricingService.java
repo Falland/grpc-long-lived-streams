@@ -10,6 +10,7 @@ import io.grpc.stub.StreamObserver;
 
 import java.time.Duration;
 
+@SuppressWarnings("unused")
 public class StreamingPricingService extends AbstractSubscriptionAware {
 
     private final Streamer<PriceUpdate> streamer;
@@ -20,14 +21,14 @@ public class StreamingPricingService extends AbstractSubscriptionAware {
                                             StreamObserver<PriceUpdate> responseObserver) {
             switch (request.getSubscriptionType()) {
                 case THROTTLING:
-                    streamer.subscribeThrottling(request.getClientId(), responseObserver,
+                    streamer.subscribeThrottling(getSubscriptionKey(request.getClientId()), responseObserver,
                             PriceUpdate::getInstrumentId);
                     return;
                 case PERSISTENT:
                     streamer.subscribePersistent(request.getClientId(), responseObserver);
                     return;
                 default:  //By default, we serve clients as FullFlow
-                    streamer.subscribeFullFlow(request.getClientId(), responseObserver);
+                    streamer.subscribeFullFlow(getSubscriptionKey(request.getClientId()), responseObserver);
             }
         }
     };

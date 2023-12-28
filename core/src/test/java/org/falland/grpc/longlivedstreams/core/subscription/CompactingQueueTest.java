@@ -1,9 +1,10 @@
-package org.falland.grpc.longlivedstreams.server.subscription;
-
-import static org.junit.jupiter.api.Assertions.*;
+package org.falland.grpc.longlivedstreams.core.subscription;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 class CompactingQueueTest {
 

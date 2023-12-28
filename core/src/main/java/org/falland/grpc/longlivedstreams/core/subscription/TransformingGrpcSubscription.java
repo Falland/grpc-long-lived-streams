@@ -1,8 +1,9 @@
-package org.falland.grpc.longlivedstreams.server.subscription;
+package org.falland.grpc.longlivedstreams.core.subscription;
 
-import java.util.function.Function;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.function.Function;
 
 public class TransformingGrpcSubscription<U, T> implements GrpcSubscription<T> {
 
@@ -17,18 +18,8 @@ public class TransformingGrpcSubscription<U, T> implements GrpcSubscription<T> {
     }
 
     @Override
-    public String getAddress() {
-        return delegate.getAddress();
-    }
-
-    @Override
-    public SubscriptionType getType() {
-        return delegate.getType();
-    }
-
-    @Override
-    public String getClientId() {
-        return delegate.getClientId();
+    public SubscriptionType type() {
+        return delegate.type();
     }
 
     @Override

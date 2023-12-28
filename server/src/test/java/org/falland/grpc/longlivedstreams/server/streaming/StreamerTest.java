@@ -1,5 +1,20 @@
 package org.falland.grpc.longlivedstreams.server.streaming;
 
+import com.google.protobuf.AbstractMessage;
+import io.grpc.stub.ServerCallStreamObserver;
+import org.falland.grpc.longlivedstreams.core.subscription.SubscriptionType;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
+
+import java.time.Duration;
+import java.time.temporal.ChronoUnit;
+import java.util.Arrays;
+import java.util.concurrent.TimeUnit;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.doReturn;
@@ -8,22 +23,19 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
-import org.falland.grpc.longlivedstreams.server.subscription.GrpcSubscription;
-import org.falland.grpc.longlivedstreams.server.subscription.SubscriptionType;
-import com.google.protobuf.AbstractMessage;
-import io.grpc.stub.ServerCallStreamObserver;
-import java.time.Duration;
-import java.time.temporal.ChronoUnit;
-import java.util.Arrays;
-import java.util.concurrent.TimeUnit;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
-
 class StreamerTest {
+
+    private final String addressString = "test.com:4242";
+    private final SubscriptionKey fullKey = new SubscriptionKey(addressString, "testFull");
+    private final SubscriptionKey throttlingKey = new SubscriptionKey(addressString, "testThrottling");
+    private final SubscriptionDescriptor fullDescriptor = new SubscriptionDescriptor(
+            fullKey.address(),
+            fullKey.clientId(),
+            SubscriptionType.FULL_FLOW);
+    private final SubscriptionDescriptor throttlingDescriptor = new SubscriptionDescriptor(
+            throttlingKey.address(),
+            throttlingKey.clientId(),
+            SubscriptionType.THROTTLING);
     private Streamer<AbstractMessage> underTest;
     @Mock
     private ServerCallStreamObserver<AbstractMessage> observerFull;
@@ -34,9 +46,11 @@ class StreamerTest {
     @Mock
     private ServerCallStreamObserver<AbstractMessage> observerThrottle2;
 
+    private AutoCloseable mocksHolder;
+
     @BeforeEach
     public void beforeEach() {
-        MockitoAnnotations.initMocks(this);
+        mocksHolder = MockitoAnnotations.openMocks(this);
         doReturn(true).when(observerFull).isReady();
         doReturn(true).when(observerFull2).isReady();
         doReturn(true).when(observerThrottle).isReady();
@@ -46,8 +60,9 @@ class StreamerTest {
     }
 
     @AfterEach
-    public void afterEach() {
+    public void afterEach() throws Exception {
         underTest.stop();
+        mocksHolder.close();
     }
 
     @Test
@@ -57,88 +72,83 @@ class StreamerTest {
 
     @Test
     public void testCreateSubscription_shouldCreateFullFlowSubscription_whenIsForFullFlow() {
-        GrpcSubscription<AbstractMessage> subscription = underTest.createFullSubscription("testFull", observerFull);
-        assertEquals("testFull", subscription.getClientId());
-        Assertions.assertEquals(SubscriptionType.FULL_FLOW, subscription.getType());
+        ServerGrpcSubscription<AbstractMessage> subscription = underTest.createFullSubscription(
+                fullKey,
+                observerFull);
+        assertEquals(fullKey, subscription.subscriptionKey());
+        Assertions.assertEquals(SubscriptionType.FULL_FLOW, subscription.type());
         assertTrue(subscription.isActive());
     }
+
     @Test
     public void testCreateSubscription_shouldCreateThrottlingSubscription_whenIsForThrottling() {
-        GrpcSubscription<AbstractMessage> subscription = underTest.createThrottlingSubscription("testThrottling", observerFull, message -> message);
-        assertEquals("testThrottling", subscription.getClientId());
-        assertEquals(SubscriptionType.THROTTLING, subscription.getType());
+        ServerGrpcSubscription<AbstractMessage> subscription = underTest.createThrottlingSubscription(
+                throttlingKey, observerFull, message -> message);
+        assertEquals(throttlingKey, subscription.subscriptionKey());
+        assertEquals(SubscriptionType.THROTTLING, subscription.type());
         assertTrue(subscription.isActive());
     }
 
     @Test
     public void testSubscribe_shouldCreateFullFlowSubscription_whenIsFullFlow() {
-        underTest.subscribeFullFlow("testFull", observerFull);
+        underTest.subscribeFullFlow(fullKey, observerFull);
         assertTrue(underTest.getSubscriptionDescriptors()
-                           .stream()
-                           .anyMatch(sd -> sd.getClientAddress().equals("null") &&
-                                           sd.getClientId().equals("testFull") &&
-                                           sd.getSubscriptionType().equals(
-                                                   SubscriptionType.FULL_FLOW)),
-                   underTest.getSubscriptionDescriptors().toString());
+                        .stream()
+                        .anyMatch(fullDescriptor::equals),
+                underTest.getSubscriptionDescriptors().toString());
     }
 
     @Test
     public void testSubscribe_shouldCreateThrottleSubscription_whenIsThrottle() {
-        underTest.subscribeThrottling("testThrottle", observerThrottle, message -> message);
+        underTest.subscribeThrottling(throttlingKey, observerThrottle, message -> message);
         assertTrue(underTest.getSubscriptionDescriptors()
-                           .stream()
-                           .anyMatch(sd -> sd.getClientAddress().equals("null") &&
-                                           sd.getClientId().equals("testThrottle") &&
-                                           sd.getSubscriptionType().equals(SubscriptionType.THROTTLING)),
-                   underTest.getSubscriptionDescriptors().toString());
+                        .stream()
+                        .anyMatch(throttlingDescriptor::equals),
+                underTest.getSubscriptionDescriptors().toString());
     }
 
     @Test
-    public void testSubscribe_shouldCloseNewSubscription_whenIsFullFlow() {
-        underTest.subscribeFullFlow("testFull", observerFull);
-        underTest.subscribeFullFlow("testFull", observerFull2);
+    public void testSubscribe_shouldCloseNewSubscription_whenSameKeyForFullFlow() {
+        underTest.subscribeFullFlow(fullKey, observerFull);
+        underTest.subscribeFullFlow(fullKey, observerFull2);
         verify(observerFull2, times(1)).onCompleted();
         assertEquals(1, underTest.getSubscriptionDescriptors().size());
         assertTrue(underTest.getSubscriptionDescriptors()
-                           .stream()
-                           .anyMatch(sd -> sd.getClientAddress().equals("null") &&
-                                           sd.getClientId().equals("testFull") &&
-                                           sd.getSubscriptionType().equals(SubscriptionType.FULL_FLOW)),
-                   underTest.getSubscriptionDescriptors().toString());
+                        .stream()
+                        .anyMatch(fullDescriptor::equals),
+                underTest.getSubscriptionDescriptors().toString());
     }
 
     @Test
-    public void testSubscribe_shouldCloseNewSubscription_whenIsThrottle() {
-        underTest.subscribeThrottling("testThrottle", observerThrottle, message -> message);
-        underTest.subscribeThrottling("testThrottle", observerThrottle2, message -> message);
+    public void testSubscribe_shouldCloseNewSubscription_whenSameKeyForThrottle() {
+        underTest.subscribeThrottling(throttlingKey,  observerThrottle, message -> message);
+        underTest.subscribeThrottling(throttlingKey, observerThrottle2, message -> message);
         verify(observerThrottle2, times(1)).onCompleted();
         assertEquals(1, underTest.getSubscriptionDescriptors().size());
         assertTrue(underTest.getSubscriptionDescriptors()
-                           .stream()
-                           .anyMatch(sd -> sd.getClientAddress().equals("null") &&
-                                           sd.getClientId().equals("testThrottle") &&
-                                           sd.getSubscriptionType().equals(SubscriptionType.THROTTLING)),
-                   underTest.getSubscriptionDescriptors().toString());
+                        .stream()
+                        .anyMatch(throttlingDescriptor::equals),
+                underTest.getSubscriptionDescriptors().toString());
     }
 
     @Test
-    public void testSubscribe_shouldCloseNewForOneClient_whenTypeIsDifferent() {
-        underTest.subscribeThrottling("test", observerThrottle, message -> message);
-        underTest.subscribeFullFlow("test", observerFull);
+    public void testSubscribe_shouldCloseNewSubscription_whenTypeIsDifferent() {
+        SubscriptionKey customKey = new SubscriptionKey(addressString, "test");
+        underTest.subscribeThrottling(customKey, observerThrottle, message -> message);
+        underTest.subscribeFullFlow(customKey, observerFull);
         verify(observerFull, times(1)).onCompleted();
         assertEquals(1, underTest.getSubscriptionDescriptors().size());
+        SubscriptionDescriptor customDescriptor = new SubscriptionDescriptor(addressString, "test", SubscriptionType.THROTTLING);
         assertTrue(underTest.getSubscriptionDescriptors()
-                           .stream()
-                           .anyMatch(sd -> sd.getClientAddress().equals("null") &&
-                                           sd.getClientId().equals("test") &&
-                                           sd.getSubscriptionType().equals(SubscriptionType.THROTTLING)),
-                   underTest.getSubscriptionDescriptors().toString());
+                        .stream()
+                        .anyMatch(customDescriptor::equals),
+                underTest.getSubscriptionDescriptors().toString());
     }
 
     @Test
-    public void testSubscribe_shouldCloseNewForOneClient_whenSubscriptionsAreDifferent() {
-        GrpcSubscription<AbstractMessage> subscription1 = underTest.createFullSubscription("testFull", observerFull);
-        GrpcSubscription<AbstractMessage> subscription2 = underTest.createFullSubscription("testFull", observerFull2);
+    public void testSubscribe_shouldCloseNew_whenSubscriptionsHaveSameKey() {
+        ServerGrpcSubscription<AbstractMessage> subscription1 = underTest.createFullSubscription(fullKey, observerFull);
+        ServerGrpcSubscription<AbstractMessage> subscription2 = underTest.createFullSubscription(fullKey, observerFull2);
 
         underTest.subscribe(subscription1);
         underTest.subscribe(subscription2);
@@ -147,16 +157,14 @@ class StreamerTest {
 
         assertEquals(1, underTest.getSubscriptionDescriptors().size());
         assertTrue(underTest.getSubscriptionDescriptors()
-                           .stream()
-                           .anyMatch(sd -> sd.getClientAddress().equals("null") &&
-                                           sd.getClientId().equals("testFull") &&
-                                           sd.getSubscriptionType().equals(SubscriptionType.FULL_FLOW)),
-                   underTest.getSubscriptionDescriptors().toString());
+                        .stream()
+                        .anyMatch(fullDescriptor::equals),
+                underTest.getSubscriptionDescriptors().toString());
     }
 
     @Test
-    public void testSubscribe_shouldNotCloseNewForOneClient_whenSubscriptionsAreSame() {
-        GrpcSubscription<AbstractMessage> subscription1 = underTest.createFullSubscription("testFull", observerFull);
+    public void testSubscribe_shouldNotCloseNew_whenSubscriptionsAreExactlySame() {
+        ServerGrpcSubscription<AbstractMessage> subscription1 = underTest.createFullSubscription(fullKey, observerFull);
 
         underTest.subscribe(subscription1);
         underTest.subscribe(subscription1);
@@ -164,38 +172,32 @@ class StreamerTest {
 
         assertEquals(1, underTest.getSubscriptionDescriptors().size());
         assertTrue(underTest.getSubscriptionDescriptors()
-                           .stream()
-                           .anyMatch(sd -> sd.getClientAddress().equals("null") &&
-                                           sd.getClientId().equals("testFull") &&
-                                           sd.getSubscriptionType().equals(SubscriptionType.FULL_FLOW)),
-                   underTest.getSubscriptionDescriptors().toString());
+                        .stream()
+                        .anyMatch(fullDescriptor::equals),
+                underTest.getSubscriptionDescriptors().toString());
     }
 
     @Test
     public void testSubscribe_shouldAllowTwoClientsToSubscribe_always() {
-        underTest.subscribeThrottling("testThrottle", observerThrottle, message -> message);
-        underTest.subscribeFullFlow("testFull", observerFull);
+        underTest.subscribeThrottling(throttlingKey, observerThrottle, message -> message);
+        underTest.subscribeFullFlow(fullKey, observerFull);
         verify(observerThrottle, never()).onCompleted();
         verify(observerFull, never()).onCompleted();
         assertEquals(2, underTest.getSubscriptionDescriptors().size());
         assertTrue(underTest.getSubscriptionDescriptors()
-                           .stream()
-                           .anyMatch(sd -> sd.getClientAddress().equals("null") &&
-                                           sd.getClientId().equals("testFull") &&
-                                           sd.getSubscriptionType().equals(SubscriptionType.FULL_FLOW)),
-                   underTest.getSubscriptionDescriptors().toString());
+                        .stream()
+                        .anyMatch(fullDescriptor::equals),
+                underTest.getSubscriptionDescriptors().toString());
         assertTrue(underTest.getSubscriptionDescriptors()
-                           .stream()
-                           .anyMatch(sd -> sd.getClientAddress().equals("null") &&
-                                           sd.getClientId().equals("testThrottle") &&
-                                           sd.getSubscriptionType().equals(SubscriptionType.THROTTLING)),
-                   underTest.getSubscriptionDescriptors().toString());
+                        .stream()
+                        .anyMatch(throttlingDescriptor::equals),
+                underTest.getSubscriptionDescriptors().toString());
     }
 
     @Test
     public void testSubmitResponse_shouldUpdateAllClients_always() throws InterruptedException {
-        underTest.subscribeThrottling("testThrottle", observerThrottle, message -> message);
-        underTest.subscribeFullFlow("testFull", observerFull);
+        underTest.subscribeThrottling(throttlingKey, observerThrottle, message -> message);
+        underTest.subscribeFullFlow(fullKey, observerFull);
         assertEquals(2, underTest.getSubscriptionDescriptors().size());
 
         AbstractMessage msg = mock(AbstractMessage.class);
@@ -208,9 +210,9 @@ class StreamerTest {
     }
 
     @Test
-    public void testSubmitResponses_shouldUpdateAllClients_always() throws InterruptedException {
-        underTest.subscribeThrottling("testThrottle", observerThrottle, message -> message);
-        underTest.subscribeFullFlow("testFull", observerFull);
+    public void testSubmitResponses_shouldUpdateAllClientsWithMultipleMessages_always() throws InterruptedException {
+        underTest.subscribeThrottling(throttlingKey, observerThrottle, message -> message);
+        underTest.subscribeFullFlow(fullKey, observerFull);
         assertEquals(2, underTest.getSubscriptionDescriptors().size());
 
         AbstractMessage msg1 = mock(AbstractMessage.class);

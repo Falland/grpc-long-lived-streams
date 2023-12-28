@@ -1,14 +1,16 @@
-package org.falland.grpc.longlivedstreams.server.subscription;
+package org.falland.grpc.longlivedstreams.core.subscription;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mock;
 
 public class GrpcSubscriptionTest {
 
+    @SuppressWarnings("unchecked")
     private final Consumer<Long> updatesConsumer = mock(Consumer.class);
     private final GrpcSubscription<Long> underTest = getTestGrpcSubscription();
 
@@ -18,8 +20,8 @@ public class GrpcSubscriptionTest {
         filtered.processUpdate(100L);
         filtered.processUpdate(101L);
 
-        verify(updatesConsumer).accept(101L);
-        verify(updatesConsumer, never()).accept(100L);
+        Mockito.verify(updatesConsumer).accept(101L);
+        Mockito.verify(updatesConsumer, Mockito.never()).accept(100L);
     }
 
     @Test
@@ -28,8 +30,8 @@ public class GrpcSubscriptionTest {
         filtered.processUpdate("100");
         filtered.processUpdate("101");
 
-        verify(updatesConsumer).accept(100L);
-        verify(updatesConsumer).accept(101L);
+        Mockito.verify(updatesConsumer).accept(100L);
+        Mockito.verify(updatesConsumer).accept(101L);
     }
 
     @Test
@@ -46,18 +48,9 @@ public class GrpcSubscriptionTest {
 
     private GrpcSubscription<Long> getTestGrpcSubscription() {
         return new GrpcSubscription<>() {
-            @Override
-            public String getAddress() {
-                return null;
-            }
 
             @Override
-            public SubscriptionType getType() {
-                return null;
-            }
-
-            @Override
-            public String getClientId() {
+            public SubscriptionType type() {
                 return null;
             }
 

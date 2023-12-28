@@ -1,8 +1,9 @@
 package org.falland.grpc.longlivedstreams.server.keepalive;
 
-import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import io.grpc.ServerInterceptors;
 import io.grpc.ServerServiceDefinition;
+import org.falland.grpc.longlivedstreams.core.util.ThreadFactoryImpl;
+
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.Executors;
@@ -22,16 +23,16 @@ class KeepAliveServiceImpl implements CallRegistry, KeepAliveService {
     KeepAliveServiceImpl(int keepAliveIntervalSeconds, int checkPeriodSeconds) {
         this.keepAliveIntervalSeconds = keepAliveIntervalSeconds;
         this.checkPeriodSeconds = checkPeriodSeconds;
-        this.executor = Executors.newSingleThreadScheduledExecutor(new ThreadFactoryBuilder()
-                .setNameFormat("application-keep-alive-runner-%d")
-                .setDaemon(true).build());
+        this.executor = Executors.newSingleThreadScheduledExecutor(
+                new ThreadFactoryImpl("application-keep-alive-runner-", true));
         serverCalls = new CopyOnWriteArraySet<>();
     }
 
-    public void start() throws Exception {
+    public void start() {
         checkFuture = executor.scheduleAtFixedRate(this::pingIdleCalls, 0, checkPeriodSeconds, TimeUnit.SECONDS);
     }
 
+    @SuppressWarnings("unused")
     public void stop() {
         if (checkFuture != null) {
             checkFuture.cancel(true);

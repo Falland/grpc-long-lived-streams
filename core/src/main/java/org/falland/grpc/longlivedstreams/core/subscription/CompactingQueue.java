@@ -1,4 +1,4 @@
-package org.falland.grpc.longlivedstreams.server.subscription;
+package org.falland.grpc.longlivedstreams.core.subscription;
 
 import java.util.Map;
 import java.util.Queue;
@@ -10,16 +10,16 @@ import java.util.function.Function;
  * The class is implementing non-blocking queue api with fair compaction functionality.
  * Compaction is performed on compaction key basis.
  * Any two events with same key will be compacted to one by keeping the latest one (based on order of {@link #offer} method call)
- *
+ * <p>
  * The fairness of the queue is ensured by keeping the order of the keys same as the were from {@link #offer} perspective
  * E.g. for events (Event E with key K is denoted as E{K}) E1{K1}, E2{K2}, E3{K1}, E4{K3}
  * The order of retrieval will be (having the compaction in mind) - E3{K1}, E2{K2}, E4{K3}
  * Therefore K1 as it was appearing first in the sequence of events will be retrieved first and so on
- *
+ * <p>
  * In other words the queue is ensuring the order of compacting keys
  * Please note that if provided extractor is effectively returning single value for all events then the queue becomes
  * a simple accumulator for the latest value in the steam of events
- *
+ * <p>
  * The class is thread safe both for offer and poll methods
  * @param <K> - the type of the key
  * @param <V> - the type of the value

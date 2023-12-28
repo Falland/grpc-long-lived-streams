@@ -1,9 +1,9 @@
 package org.falland.grpc.longlivedstreams.examples.apps;
 
 import com.falland.gprc.longlivedstreams.proto.helloworld.v1.World;
-import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.protobuf.ByteString;
 import org.falland.grpc.longlivedstreams.client.ClientContext;
+import org.falland.grpc.longlivedstreams.core.util.ThreadFactoryImpl;
 import org.falland.grpc.longlivedstreams.examples.GrpcServer;
 import org.falland.grpc.longlivedstreams.examples.StreamingClient;
 import org.falland.grpc.longlivedstreams.examples.StreamingClientContext;
@@ -23,10 +23,7 @@ import static org.falland.grpc.longlivedstreams.examples.apps.PortUtils.findFree
 public class FullFlowServerStreamingClient {
 
     public static void main(String[] args) throws IOException, InterruptedException {
-        ThreadFactory factory = new ThreadFactoryBuilder()
-                .setNameFormat("full-flow-test-client-worker-%s")
-                .setDaemon(false)
-                .build();
+        ThreadFactory factory = new ThreadFactoryImpl("full-flow-test-client-worker-",false);
         ExecutorService clientExecutor = Executors.newSingleThreadScheduledExecutor(factory);
         int port = findFreePort();
         StreamingService streamingService = new StreamingService(10_000, Duration.ofMillis(1));
@@ -45,6 +42,7 @@ public class FullFlowServerStreamingClient {
         }
 
         while (updateProcessor.getMessages().isEmpty()) {
+            //noinspection BusyWait
             Thread.sleep(1);
         }
         System.out.println("Received initial batch");

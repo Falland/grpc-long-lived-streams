@@ -19,9 +19,9 @@ public class StreamingService extends AbstractSubscriptionAware {
         public void sayServerStreaming(Hello request, StreamObserver<World> responseObserver) {
             System.out.println("New client has connected");
             if (request.getIsThrottling()) {
-                streamer.subscribeThrottling(request.getClientId(), responseObserver, World::getGroup);
+                streamer.subscribeThrottling(getSubscriptionKey(request.getClientId()), responseObserver, World::getGroup);
             } else {
-                streamer.subscribeFullFlow(request.getClientId(), responseObserver);
+                streamer.subscribeFullFlow(getSubscriptionKey(request.getClientId()), responseObserver);
             }
         }
     };
