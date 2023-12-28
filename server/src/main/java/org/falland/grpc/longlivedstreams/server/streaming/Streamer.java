@@ -1,31 +1,27 @@
 package org.falland.grpc.longlivedstreams.server.streaming;
 
-import org.falland.grpc.longlivedstreams.server.address.AddressInterceptor;
-import org.falland.grpc.longlivedstreams.server.subscription.FullFlowSubscription;
-import org.falland.grpc.longlivedstreams.server.subscription.GrpcSubscription;
-import org.falland.grpc.longlivedstreams.server.subscription.SubscriptionDescriptor;
-import org.falland.grpc.longlivedstreams.server.subscription.SubscriptionObserver;
-import org.falland.grpc.longlivedstreams.server.subscription.SubscriptionType;
-import org.falland.grpc.longlivedstreams.server.subscription.ThrottlingSubscription;
-import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import io.grpc.stub.ServerCallStreamObserver;
 import io.grpc.stub.StreamObserver;
+import org.falland.grpc.longlivedstreams.core.util.ThreadFactoryImpl;
+import org.falland.grpc.longlivedstreams.core.subscription.FullFlowSubscription;
+import org.falland.grpc.longlivedstreams.core.subscription.GrpcSubscription;
+import org.falland.grpc.longlivedstreams.core.SubscriptionObserver;
+import org.falland.grpc.longlivedstreams.core.subscription.SubscriptionType;
+import org.falland.grpc.longlivedstreams.core.subscription.ThrottlingSubscription;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.net.SocketAddress;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ThreadFactory;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
- * The class that provides the safe server side streaming support for gRPC services
+ * The class provides the safe server side streaming support for gRPC services
  * This class takes care of slow consumers/fast producers by exposing two types of subscriptions.
  * Full Flow: all messages produced are sent to the client. If the client is slow to consume then messages are queued.
  * In order to avoid unlimited queue growth there's a limit for the queue. Once the queue reaches the limit the stream is closed with exception.
@@ -33,66 +29,65 @@ import java.util.stream.Collectors;
  * Note! While disconnected the service does not store the messages produced, so client might lose messages in between reconnects
  * Throttling: only the latest messages are reaching the client. In case the client is too slow to consume all the messages
  * the key-based compaction will be performed. Key extraction function is provided when creating the subscription.
- * Compactor is guaranteed to preserve the key order. I.e . the key that appeared first in the stream will be sent first.
+ * Compactor is guaranteed to preserve the key order. I.e. the key that appeared first in the stream will be sent first.
+ *
  * @param <U> the message type of the streamer
  */
 public class Streamer<U> {
-
     private static final Logger LOGGER = LoggerFactory.getLogger(Streamer.class);
-
-    private final Map<String, GrpcSubscription<U>> clientAddressToStream = new ConcurrentHashMap<>();
+    private final Map<SubscriptionKey, ServerGrpcSubscription<U>> subscriptionsByKey = new ConcurrentHashMap<>();
     private final ScheduledExecutorService throttlingExecutor;
     protected final String serviceName;
     protected final int queueSize;
-    protected final Duration threadCoolDownWhenNotReady;
+    protected final Duration coolDownDuration;
 
     public Streamer(String serviceName, int queueSize,
                     Duration threadCoolDownWhenNotReady) {
         this.serviceName = serviceName;
         this.queueSize = queueSize;
-        this.threadCoolDownWhenNotReady = threadCoolDownWhenNotReady;
-        ThreadFactory threadFactory = new ThreadFactoryBuilder()
-                .setDaemon(true)
-                .setNameFormat(serviceName + "-throttler-%d")
-                .build();
-        this.throttlingExecutor = Executors.newSingleThreadScheduledExecutor(threadFactory);
+        this.coolDownDuration = threadCoolDownWhenNotReady;
+        this.throttlingExecutor = Executors.newSingleThreadScheduledExecutor(
+                new ThreadFactoryImpl(serviceName + "-throttler-", true));
     }
 
     /**
-     * Creates the Full Flow subscription. You can use it to send the snapshot prior to finalize the subscription with {@link Streamer#subscribe(GrpcSubscription)}
+     * Creates the Full Flow subscription. You can use it to send the snapshot prior to finalize the subscription with {@link Streamer#subscribe(ServerGrpcSubscription)}
      * Make sure you don't create two subscriptions on one observer. This may lead to incorrect behaviour on the clint side.
-     * @param clientId - the identification of the client
+     *
      * @param observer - the gRPC observer object provided from the method call site
      * @return GrpcSubscription with the type {@link SubscriptionType#FULL_FLOW}
      */
-    public GrpcSubscription<U> createFullSubscription(String clientId, StreamObserver<U> observer) {
-        SubscriptionObserver<U> subscriptionObserver = createObserver((ServerCallStreamObserver<U>) observer);
-        return FullFlowSubscription.builder(subscriptionObserver)
-                .withClientId(clientId)
-                .withQueueSize(queueSize)
-                .withServiceName(serviceName)
-                .withThreadCoolDownWhenNotReady(threadCoolDownWhenNotReady)
-                .build();
+    public ServerGrpcSubscription<U> createFullSubscription(SubscriptionKey key, StreamObserver<U> observer) {
+        SubscriptionObserver<U> subscriptionObserver = createObserver(observer);
+        return new ServerGrpcSubscription<>(key,
+                FullFlowSubscription.builder(subscriptionObserver)
+                        .withQueueSize(queueSize)
+                        .withCoolDownDuration(coolDownDuration)
+                        .withThreadFactory(new ThreadFactoryImpl(getNamePrefix(key)))
+                        .build());
+    }
+
+    private String getNamePrefix(SubscriptionKey key) {
+        return serviceName + "-" + key.address() + "-" + key.clientId() + "-";
     }
 
     /**
-     * Creates the Throttling subscription. You can use it to send the snapshot prior to finalize the subscription with {@link Streamer#subscribe(GrpcSubscription)}
+     * Creates the Throttling subscription. You can use it to send the snapshot prior to finalize the subscription with {@link Streamer#subscribe(ServerGrpcSubscription)}
      * Make sure you don't create two subscriptions on one observer. This may lead to incorrect behaviour on the clint side.
-     * @param clientId - the identification of the client
-     * @param observer - the gRPC observer object provided from the method call site
+     *
+     * @param observer               - the gRPC observer object provided from the method call site
      * @param compactionKeyExtractor - the key extraction function that is going to be used for key-based compaction
-     * @param <K> - the type of the key
+     * @param <K>                    - the type of the key
      * @return GrpcSubscription with the type {@link SubscriptionType#THROTTLING}
      */
-    public <K> GrpcSubscription<U> createThrottlingSubscription(String clientId, StreamObserver<U> observer,
-                                                                Function<U, K> compactionKeyExtractor) {
-        SubscriptionObserver<U> subscriptionObserver = createObserver((ServerCallStreamObserver<U>) observer);
-        return ThrottlingSubscription.builder(subscriptionObserver, compactionKeyExtractor)
-                .withClientId(clientId)
-                .withServiceName(serviceName)
-                .withThreadCoolDownWhenNotReady(threadCoolDownWhenNotReady)
-                .withExecutor(throttlingExecutor)
-                .build();
+    public <K> ServerGrpcSubscription<U> createThrottlingSubscription(SubscriptionKey key, StreamObserver<U> observer,
+                                                                      Function<U, K> compactionKeyExtractor) {
+        SubscriptionObserver<U> subscriptionObserver = createObserver(observer);
+        return new ServerGrpcSubscription<>(key,
+                ThrottlingSubscription.builder(subscriptionObserver, compactionKeyExtractor)
+                        .withCoolDownDuration(coolDownDuration)
+                        .withExecutor(throttlingExecutor)
+                        .build());
     }
 
     /**
@@ -102,56 +97,59 @@ public class Streamer<U> {
      *
      * @param subscription - subscription to register
      */
-    public void subscribe(GrpcSubscription<U> subscription) {
+    public void subscribe(ServerGrpcSubscription<U> subscription) {
         if (subscription == null) {
             throw new IllegalArgumentException("Subscription can not be null.");
         }
-        handleDoubleSubscription(getKey(subscription.getAddress(), subscription.getClientId()),
-                                 subscription, subscription.getAddress());
+        handleDoubleSubscription(subscription);
     }
 
     /**
      * Creates and registers the Throttling subscription.
      * Make sure you don't create two subscriptions on one observer. This may lead to incorrect behaviour on the clint side.
-     * @param clientId - the identification of the client
-     * @param observer - the gRPC observer object provided from the method call site
+     *
+     * @param subscriptionKey        - the identification of the client by id and address
+     * @param observer               - the gRPC observer object provided from the method call site
      * @param compactionKeyExtractor - the key extraction function that is going to be used for key-based compaction
-     * @param <K> - the type of the key
+     * @param <K>                    - the type of the key
      */
-    public <K> void subscribeThrottling(String clientId, StreamObserver<U> observer,
+    public <K> void subscribeThrottling(SubscriptionKey subscriptionKey, StreamObserver<U> observer,
                                         Function<U, K> compactionKeyExtractor) {
-        subscribe(createThrottlingSubscription(clientId, observer, compactionKeyExtractor));
+        subscribe(createThrottlingSubscription(subscriptionKey, observer, compactionKeyExtractor));
     }
 
     /**
      * Creates and registers the Full Flow subscription.
      * Make sure you don't create two subscriptions on one observer. This may lead to incorrect behaviour on the clint side.
-     * @param clientId - the identification of the client
-     * @param observer - the gRPC observer object provided from the method call site
+     *
+     * @param subscriptionKey - the identification of the client
+     * @param observer        - the gRPC observer object provided from the method call site
      */
-    public void subscribeFullFlow(String clientId, StreamObserver<U> observer) {
-        subscribe(createFullSubscription(clientId, observer));
+    public void subscribeFullFlow(SubscriptionKey subscriptionKey, StreamObserver<U> observer) {
+        subscribe(createFullSubscription(subscriptionKey, observer));
     }
 
     /**
      * Creates and registers the Persistent subscription.
      * Make sure you don't create two subscriptions on one observer. This may lead to incorrect behaviour on the clint side.
+     *
      * @param clientId - the identification of the client
      * @param observer - the gRPC observer object provided from the method call site
      */
+    @SuppressWarnings("unused")
     public void subscribePersistent(String clientId, StreamObserver<U> observer) {
         throw new UnsupportedOperationException("The operation is currently unsupported");
     }
 
     public final boolean hasSubscriptions() {
-        return !clientAddressToStream.isEmpty();
+        return !subscriptionsByKey.isEmpty();
     }
 
     public Collection<SubscriptionDescriptor> getSubscriptionDescriptors() {
-        return clientAddressToStream.values().stream()
-                .map(sub -> new SubscriptionDescriptor(sub.getAddress(),
-                                                       sub.getClientId(),
-                                                       sub.getType()))
+        return subscriptionsByKey.values().stream()
+                .map(s -> new SubscriptionDescriptor(s.subscriptionKey().address(),
+                        s.subscriptionKey().clientId(),
+                        s.type()))
                 .collect(Collectors.toList());
     }
 
@@ -169,63 +167,63 @@ public class Streamer<U> {
 
     public final void completeStreamer() {
         throttlingExecutor.shutdownNow();
-        clientAddressToStream.values().forEach(GrpcSubscription::onCompleted);
-        clientAddressToStream.clear();
+        subscriptionsByKey.values().forEach(GrpcSubscription::onCompleted);
+        subscriptionsByKey.clear();
     }
 
+    @SuppressWarnings("unused")
     public final void completeStreamerWithError(Throwable t) {
-        clientAddressToStream.values().forEach(o -> o.onError(t));
-        clientAddressToStream.clear();
+        subscriptionsByKey.values().forEach(o -> o.onError(t));
+        subscriptionsByKey.clear();
     }
 
     public void stop() {
         completeStreamer();
     }
 
-    protected void handleDoubleSubscription(String key, GrpcSubscription<U> subscription, String address) {
-        GrpcSubscription<U> previous = clientAddressToStream.putIfAbsent(key, subscription);
+    protected void handleDoubleSubscription(ServerGrpcSubscription<U> subscription) {
+        GrpcSubscription<U> previous = subscriptionsByKey.putIfAbsent(subscription.subscriptionKey(), subscription);
         if (previous != null && previous != subscription) {
             //We close new and not the previous stream
-            closeSubscription(address, subscription);
+            closeSubscription(subscription);
         }
     }
 
-    protected String getKey(String address, String clientId) {
-        return address + "_" + clientId;
+    protected SubscriptionObserver<U> createObserver(StreamObserver<U> observer) {
+        if (observer instanceof ServerCallStreamObserver<U>) {
+            return new ServerSubscriptionObserver<>((ServerCallStreamObserver<U>) observer);
+        }
+        throw new IllegalArgumentException("Observer is of unknown type: [" + observer.getClass() + "]");
     }
 
-    protected SubscriptionObserver<U> createObserver(ServerCallStreamObserver<U> observer) {
-        SocketAddress address = AddressInterceptor.ADDRESS_KEY.get();
-        String addressString = address == null ? "null" : address.toString();
-        return new SubscriptionObserver<>(addressString, observer);
-    }
-
-    private void closeSubscription(String address, GrpcSubscription<U> subscription) {
-        try {
-            if (subscription != null) {
-                LOGGER.debug("Open stream found for client {} on address {}, closing.", subscription.getClientId(),
-                             address);
+    private void closeSubscription(ServerGrpcSubscription<U> subscription) {
+        if (subscription != null) {
+            var key = subscription.subscriptionKey();
+            try {
+                LOGGER.debug("Open stream found for client {} on address {}, closing.", key.clientId(),
+                        key.address());
                 subscription.onCompleted();
+            } catch (Exception e) {
+                LOGGER.error("Error while closing stream for client {} address {}", key.clientId(),
+                        key.address(), e);
             }
-        } catch (Exception e) {
-            LOGGER.error("Error while closing stream for client {} address {}", subscription.getClientId(), address, e);
         }
     }
 
     protected void notifyListeners(U update) {
-        for (Map.Entry<String, GrpcSubscription<U>> entry : clientAddressToStream.entrySet()) {
-            GrpcSubscription<U> subscription = entry.getValue();
+        for (var subscription : subscriptionsByKey.values()) {
             try {
                 if (subscription.isActive()) {
                     subscription.processUpdate(update);
                 } else {
                     //the subscription is closed by now we can remove it
-                    clientAddressToStream.remove(entry.getKey(), subscription);
+                    subscriptionsByKey.remove(subscription.subscriptionKey(), subscription);
                 }
             } catch (Exception e) {
-                LOGGER.debug("Error while handling update for client {}", subscription.getClientId(), e);
+                LOGGER.debug("Error while handling update for client {} and address {}",
+                        subscription.subscriptionKey().clientId(), subscription.subscriptionKey().address(), e);
                 subscription.onError(e);
-                clientAddressToStream.remove(entry.getKey(), subscription);
+                subscriptionsByKey.remove(subscription.subscriptionKey(), subscription);
             }
         }
     }

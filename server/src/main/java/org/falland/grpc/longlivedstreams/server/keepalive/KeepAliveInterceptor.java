@@ -1,11 +1,11 @@
 package org.falland.grpc.longlivedstreams.server.keepalive;
 
-import org.falland.grpc.longlivedstreams.server.keepalive.CallRegistry.Removable;
 import io.grpc.Metadata;
 import io.grpc.ServerCall;
 import io.grpc.ServerCall.Listener;
 import io.grpc.ServerCallHandler;
 import io.grpc.ServerInterceptor;
+import org.falland.grpc.longlivedstreams.server.keepalive.CallRegistry.Removable;
 
 @SuppressWarnings("squid:S119")
 class KeepAliveInterceptor implements ServerInterceptor {

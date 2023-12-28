@@ -1,8 +1,11 @@
-package org.falland.grpc.longlivedstreams.server.subscription;
+package org.falland.grpc.longlivedstreams.server.streaming;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
+import io.grpc.stub.ServerCallStreamObserver;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doReturn;
@@ -11,25 +14,17 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
-import io.grpc.stub.ServerCallStreamObserver;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+class ServerSubscriptionObserverTest {
 
-class SubscriptionObserverTest {
-
-    private SubscriptionObserver<Long> underTest;
+    private ServerSubscriptionObserver<Long> underTest;
     private ServerCallStreamObserver<Long> observer;
 
     @BeforeEach
     public void beforeEach() {
+        //noinspection unchecked
         observer = mock(ServerCallStreamObserver.class);
         doReturn(true).when(observer).isReady();
-        underTest = new SubscriptionObserver<>("test", observer);
-    }
-
-    @Test
-    public void testGetAddress_shouldReturnAddress_always() {
-        assertEquals("test", underTest.getAddress());
+        underTest = new ServerSubscriptionObserver<>(observer);
     }
 
     @Test
@@ -46,7 +41,6 @@ class SubscriptionObserverTest {
 
     @Test
     public void testOnNext_shouldSend_whenNotCancelled() {
-        doReturn(false).when(observer).isCancelled();
         underTest.onNext(1L);
         verify(observer).onNext(1L);
     }

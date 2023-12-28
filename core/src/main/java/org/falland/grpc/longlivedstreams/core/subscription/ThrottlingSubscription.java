@@ -1,19 +1,19 @@
-package org.falland.grpc.longlivedstreams.server.subscription;
+package org.falland.grpc.longlivedstreams.core.subscription;
+
+import org.falland.grpc.longlivedstreams.core.SubscriptionObserver;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public class ThrottlingSubscription<U, K> implements GrpcSubscription<U> {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ThrottlingSubscription.class);
-    public static final String THROTTLED = "throttled";
 
-    private final String clientId;
     private final SubscriptionObserver<U> observer;
     private final CompactingQueue<K, U> updatesQueue;
     private final ScheduledExecutorService throttledSender;
@@ -21,12 +21,9 @@ public class ThrottlingSubscription<U, K> implements GrpcSubscription<U> {
 
     private ThrottlingSubscription(Builder<U, K> builder) {
         this.observer = builder.observer;
-        this.clientId = builder.clientId;
-        String serviceName = builder.serviceName;
         this.updatesQueue = new CompactingQueue<>(builder.compactionKeyExtractor);
-        this.coolDownWhenNotReadyNano = Objects.requireNonNull(builder.threadCoolDownWhenNotReady).toNanos();
+        this.coolDownWhenNotReadyNano = Objects.requireNonNull(builder.coolDownDuration).toNanos();
         this.throttledSender = builder.throttledSender;
-
         throttledSender.schedule(this::trySendMessage, 0, TimeUnit.NANOSECONDS);
     }
 
@@ -43,7 +40,7 @@ public class ThrottlingSubscription<U, K> implements GrpcSubscription<U> {
                 } catch (Throwable e) {
                     observer.onError(e);
                     //Usually this happens due to lack of flow control, too many messages do not fit into gRPC buffer leading to DirectMemoryError
-                    LOGGER.debug("Error while handling update for client {}", clientId, e);
+                    LOGGER.debug("Error while handling update {}", update, e);
                 }
             }
         }
@@ -51,18 +48,8 @@ public class ThrottlingSubscription<U, K> implements GrpcSubscription<U> {
     }
 
     @Override
-    public String getAddress() {
-        return observer.getAddress();
-    }
-
-    @Override
-    public SubscriptionType getType() {
+    public SubscriptionType type() {
         return SubscriptionType.THROTTLING;
-    }
-
-    @Override
-    public String getClientId() {
-        return clientId;
     }
 
     @Override
@@ -93,9 +80,7 @@ public class ThrottlingSubscription<U, K> implements GrpcSubscription<U> {
     public static class Builder<U, K> {
         private final SubscriptionObserver<U> observer;
         private final Function<U, K> compactionKeyExtractor;
-        private String clientId;
-        private String serviceName;
-        private Duration threadCoolDownWhenNotReady;
+        private Duration coolDownDuration;
         private ScheduledExecutorService throttledSender;
 
         public Builder(SubscriptionObserver<U> observer, Function<U, K> compactionKeyExtractor) {
@@ -103,18 +88,13 @@ public class ThrottlingSubscription<U, K> implements GrpcSubscription<U> {
             this.compactionKeyExtractor = compactionKeyExtractor;
         }
 
-        public Builder<U, K> withClientId(String clientId) {
-            this.clientId = clientId;
-            return this;
-        }
-
-        public Builder<U, K> withServiceName(String serviceName) {
-            this.serviceName = serviceName;
-            return this;
-        }
-
-        public Builder<U, K> withThreadCoolDownWhenNotReady(Duration threadCoolDownWhenNotReady) {
-            this.threadCoolDownWhenNotReady = threadCoolDownWhenNotReady;
+        /**
+         * The duration to wait before trying to send message to StreamObserver once it signaled being not ready
+         * @param coolDownDuration - the duration for sending thread to wait before re-attempting send
+         * @return - builder
+         */
+        public Builder<U, K> withCoolDownDuration(Duration coolDownDuration) {
+            this.coolDownDuration = coolDownDuration;
             return this;
         }
 
@@ -124,6 +104,8 @@ public class ThrottlingSubscription<U, K> implements GrpcSubscription<U> {
         }
 
         public ThrottlingSubscription<U, K> build() {
+            Objects.requireNonNull(throttledSender, "Executor can't be null");
+            Objects.requireNonNull(coolDownDuration, "Cool down duration can't be null");
             return new ThrottlingSubscription<>(this);
         }
     }

@@ -1,6 +1,6 @@
-package org.falland.grpc.longlivedstreams.server.subscription;
+package org.falland.grpc.longlivedstreams.core.subscription;
 
-import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import org.falland.grpc.longlivedstreams.core.SubscriptionObserver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -13,45 +13,26 @@ public class FullFlowSubscription<U> implements GrpcSubscription<U> {
     private static final Logger LOGGER = LoggerFactory.getLogger(FullFlowSubscription.class);
     public static final YouAreTooSlowException TOO_SLOW_EXCEPTION =
             new YouAreTooSlowException("The server queue is filled, you are not keeping up.");
-
-    private final String clientId;
     private final ExecutorService executor;
     private final SubscriptionObserver<U> observer;
-    private final Duration threadCoolDownWhenNotReady;
+    private final Duration coolDownDuration;
     private final BlockingQueue<U> updatesQueue;
 
     private volatile boolean isActive = true;
 
     private FullFlowSubscription(Builder<U> builder) {
         int queueSize = builder.queueSize;
-        String serviceName = builder.serviceName;
-
-        this.clientId = builder.clientId;
         this.observer = Objects.requireNonNull(builder.observer);
-        this.threadCoolDownWhenNotReady = Objects.requireNonNull(builder.threadCoolDownWhenNotReady);
+        this.coolDownDuration = Objects.requireNonNull(builder.coolDownDuration);
         this.updatesQueue = new LinkedBlockingQueue<>(queueSize);
-        ThreadFactory threadFactory = new ThreadFactoryBuilder()
-                .setDaemon(true)
-                .setNameFormat(serviceName + "- " + clientId + "-%d")
-                .build();
-        this.executor = Executors.newSingleThreadExecutor(threadFactory);
+        this.executor = Executors.newSingleThreadExecutor(builder.threadFactory);
 
         executor.submit(this::trySendMessage);
     }
 
     @Override
-    public String getAddress() {
-        return observer.getAddress();
-    }
-
-    @Override
-    public SubscriptionType getType() {
+    public SubscriptionType type() {
         return SubscriptionType.FULL_FLOW;
-    }
-
-    @Override
-    public String getClientId() {
-        return clientId;
     }
 
     @Override
@@ -68,26 +49,36 @@ public class FullFlowSubscription<U> implements GrpcSubscription<U> {
             try {
                 boolean messageSent = false;
                 if (observer.isReady()) {
-                    U update = updatesQueue.poll();
-                    if (update != null) {
-                        observer.onNext(update);
-                        messageSent = true;
-                    }
+                    messageSent = sendMessage(messageSent);
                 }
                 if (!messageSent) {
-                    TimeUnit.NANOSECONDS.sleep(threadCoolDownWhenNotReady.toNanos());
+                    TimeUnit.NANOSECONDS.sleep(coolDownDuration.toNanos());
                 }
             } catch (InterruptedException e) {
                 //we are interrupted, hence the thread should stop, therefore we complete the stream
-                LOGGER.info("Interrupted while waiting on stream to be ready. Closing stream for client {}", clientId);
+                LOGGER.info("Interrupted while waiting on stream to be ready. Closing stream");
                 onCompleted();
                 Thread.currentThread().interrupt();
-            } catch (Throwable e) {
-                //Usually this happens due to lack of flow control, too many messages do not fit into gRPC buffer leading to DirectMemoryError
-                LOGGER.debug("Error while handling update for client {}", clientId, e);
+            } catch (Exception e) {
+                LOGGER.debug("Error while sending message", e);
                 onError(e);
             }
         }
+    }
+
+    private boolean sendMessage(boolean messageSent) {
+        U update = updatesQueue.poll();
+        if (update != null) {
+            try {
+                observer.onNext(update);
+            } catch (Throwable e) {
+                observer.onError(e);
+                //Usually this happens due to lack of flow control, too many messages do not fit into gRPC buffer leading to DirectMemoryError
+                LOGGER.debug("Error while handling update {}", update, e);
+            }
+            messageSent = true;
+        }
+        return messageSent;
     }
 
     @Override
@@ -118,36 +109,42 @@ public class FullFlowSubscription<U> implements GrpcSubscription<U> {
 
     public static class Builder<U> {
         private final SubscriptionObserver<U> observer;
-        private String clientId;
+        private ThreadFactory threadFactory;
         private int queueSize;
-        private String serviceName;
-        private Duration threadCoolDownWhenNotReady;
+        private Duration coolDownDuration;
 
         public Builder(SubscriptionObserver<U> observer) {
             this.observer = observer;
         }
 
-        public Builder<U> withClientId(String clientId) {
-            this.clientId = clientId;
+        public Builder<U> withThreadFactory(ThreadFactory threadFactory) {
+            this.threadFactory = threadFactory;
             return this;
         }
 
+        @SuppressWarnings("unused")
         public Builder<U> withQueueSize(int queueSize) {
             this.queueSize = queueSize;
             return this;
         }
 
-        public Builder<U> withServiceName(String serviceName) {
-            this.serviceName = serviceName;
-            return this;
-        }
-
-        public Builder<U> withThreadCoolDownWhenNotReady(Duration threadCoolDownWhenNotReady) {
-            this.threadCoolDownWhenNotReady = threadCoolDownWhenNotReady;
+        /**
+         * The duration to wait before trying to send message to StreamObserver once it signaled being not ready
+         *
+         * @param coolDownDuration - the duration for sending thread to wait before re-attempting send
+         * @return - builder
+         */
+        public Builder<U> withCoolDownDuration(Duration coolDownDuration) {
+            this.coolDownDuration = coolDownDuration;
             return this;
         }
 
         public FullFlowSubscription<U> build() {
+            Objects.requireNonNull(threadFactory, "Thread factory can't be null");
+            Objects.requireNonNull(coolDownDuration, "Cool down duration can't be null");
+            if (queueSize <= 0) {
+                throw new IllegalArgumentException("Queue size can not be less or equal to zero.");
+            }
             return new FullFlowSubscription<>(this);
         }
     }
