@@ -1,4 +1,4 @@
-package org.falland.grpc.longlivedstreams.core.subscription;
+package org.falland.grpc.longlivedstreams.core.streams;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

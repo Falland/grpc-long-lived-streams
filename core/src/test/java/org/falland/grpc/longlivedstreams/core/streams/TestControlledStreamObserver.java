@@ -1,6 +1,6 @@
-package org.falland.grpc.longlivedstreams.core.subscription;
+package org.falland.grpc.longlivedstreams.core.streams;
 
-import org.falland.grpc.longlivedstreams.core.SubscriptionObserver;
+import org.falland.grpc.longlivedstreams.core.ControlledStreamObserver;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -11,7 +11,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Predicate;
 
-public class TestSubscriptionObserver<U> implements SubscriptionObserver<U> {
+public class TestControlledStreamObserver<U> implements ControlledStreamObserver<U> {
     private final Predicate<U> throwOnNextIf;
     private final Queue<U> onNextMessages = new ConcurrentLinkedQueue<>();
     private final Phaser onNextPhaser = new Phaser(1);
@@ -21,11 +21,11 @@ public class TestSubscriptionObserver<U> implements SubscriptionObserver<U> {
     private volatile boolean isOpened = false;
     private volatile Throwable errorReceived;
 
-    public TestSubscriptionObserver(Predicate<U> throwOnNextIf) {
+    public TestControlledStreamObserver(Predicate<U> throwOnNextIf) {
         this.throwOnNextIf = throwOnNextIf;
     }
 
-    public TestSubscriptionObserver() {
+    public TestControlledStreamObserver() {
         this(null);
     }
 

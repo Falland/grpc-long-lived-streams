@@ -1,35 +1,36 @@
-package org.falland.grpc.longlivedstreams.core.subscription;
+package org.falland.grpc.longlivedstreams.core.streams;
 
+import org.falland.grpc.longlivedstreams.core.GrpcStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.function.Function;
 
-public class TransformingGrpcSubscription<U, T> implements GrpcSubscription<T> {
+public class TransformingGrpcStream<U, T> implements GrpcStream<T> {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(TransformingGrpcSubscription.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(TransformingGrpcStream.class);
 
-    private final GrpcSubscription<U> delegate;
+    private final GrpcStream<U> delegate;
     private final Function<T, U> transformer;
 
-    public TransformingGrpcSubscription(GrpcSubscription<U> delegate, Function<T, U> transformer) {
+    public TransformingGrpcStream(GrpcStream<U> delegate, Function<T, U> transformer) {
         this.delegate = delegate;
         this.transformer = transformer;
     }
 
     @Override
-    public SubscriptionType type() {
+    public StreamType type() {
         return delegate.type();
     }
 
     @Override
-    public void processUpdate(T update) {
+    public void onNext(T update) {
         try {
             U transformedUpdate = transformer.apply(update);
             if (transformedUpdate == null) {
                 throw new TransformationException("Transformed value can't be null");
             }
-            delegate.processUpdate(transformedUpdate);
+            delegate.onNext(transformedUpdate);
         } catch (Exception e) {
             LOGGER.debug("Error during transformation");
             throw new TransformationException("Error during transformation", e);

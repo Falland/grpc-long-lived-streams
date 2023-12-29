@@ -1,5 +1,6 @@
-package org.falland.grpc.longlivedstreams.core.subscription;
+package org.falland.grpc.longlivedstreams.core.streams;
 
+import org.falland.grpc.longlivedstreams.core.GrpcStream;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
@@ -8,17 +9,17 @@ import java.util.function.Consumer;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 
-public class GrpcSubscriptionTest {
+public class GrpcStreamTest {
 
     @SuppressWarnings("unchecked")
     private final Consumer<Long> updatesConsumer = mock(Consumer.class);
-    private final GrpcSubscription<Long> underTest = getTestGrpcSubscription();
+    private final GrpcStream<Long> underTest = getTestGrpcSubscription();
 
     @Test
     public void testFilteringSubscription_shouldFilter() {
-        GrpcSubscription<Long> filtered = underTest.withFilter(number -> number > 100);
-        filtered.processUpdate(100L);
-        filtered.processUpdate(101L);
+        GrpcStream<Long> filtered = underTest.withFilter(number -> number > 100);
+        filtered.onNext(100L);
+        filtered.onNext(101L);
 
         Mockito.verify(updatesConsumer).accept(101L);
         Mockito.verify(updatesConsumer, Mockito.never()).accept(100L);
@@ -26,9 +27,9 @@ public class GrpcSubscriptionTest {
 
     @Test
     public void testTransformingSubscription_shouldTransform() {
-        GrpcSubscription<String> filtered = underTest.withTransformation(Long::parseLong);
-        filtered.processUpdate("100");
-        filtered.processUpdate("101");
+        GrpcStream<String> filtered = underTest.withTransformation(Long::parseLong);
+        filtered.onNext("100");
+        filtered.onNext("101");
 
         Mockito.verify(updatesConsumer).accept(100L);
         Mockito.verify(updatesConsumer).accept(101L);
@@ -36,26 +37,26 @@ public class GrpcSubscriptionTest {
 
     @Test
     public void testTransformingSubscription_shouldThrowException_whenTransformerFails() {
-        GrpcSubscription<String> filtered = underTest.withTransformation(Long::parseLong);
-        assertThrows(TransformingGrpcSubscription.TransformationException.class, () -> filtered.processUpdate("aaa"));
+        GrpcStream<String> filtered = underTest.withTransformation(Long::parseLong);
+        assertThrows(TransformingGrpcStream.TransformationException.class, () -> filtered.onNext("aaa"));
     }
 
     @Test
     public void testTransformingSubscription_shouldThrowException_whenTransformerReturnsNull() {
-        GrpcSubscription<String> filtered = underTest.withTransformation(string -> null);
-        assertThrows(TransformingGrpcSubscription.TransformationException.class, () -> filtered.processUpdate("aaa"));
+        GrpcStream<String> filtered = underTest.withTransformation(string -> null);
+        assertThrows(TransformingGrpcStream.TransformationException.class, () -> filtered.onNext("aaa"));
     }
 
-    private GrpcSubscription<Long> getTestGrpcSubscription() {
-        return new GrpcSubscription<>() {
+    private GrpcStream<Long> getTestGrpcSubscription() {
+        return new GrpcStream<>() {
 
             @Override
-            public SubscriptionType type() {
+            public StreamType type() {
                 return null;
             }
 
             @Override
-            public void processUpdate(Long update) {
+            public void onNext(Long update) {
                 updatesConsumer.accept(update);
             }
 

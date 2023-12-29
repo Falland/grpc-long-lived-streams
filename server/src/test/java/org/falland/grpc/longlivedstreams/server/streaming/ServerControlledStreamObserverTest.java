@@ -14,9 +14,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
-class ServerSubscriptionObserverTest {
+class ServerControlledStreamObserverTest {
 
-    private ServerSubscriptionObserver<Long> underTest;
+    private ServerControlledStreamObserver<Long> underTest;
     private ServerCallStreamObserver<Long> observer;
 
     @BeforeEach
@@ -24,7 +24,7 @@ class ServerSubscriptionObserverTest {
         //noinspection unchecked
         observer = mock(ServerCallStreamObserver.class);
         doReturn(true).when(observer).isReady();
-        underTest = new ServerSubscriptionObserver<>(observer);
+        underTest = new ServerControlledStreamObserver<>(observer);
     }
 
     @Test

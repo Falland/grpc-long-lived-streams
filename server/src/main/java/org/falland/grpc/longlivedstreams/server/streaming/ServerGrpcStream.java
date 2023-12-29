@@ -1,14 +1,14 @@
 package org.falland.grpc.longlivedstreams.server.streaming;
 
-import org.falland.grpc.longlivedstreams.core.subscription.GrpcSubscription;
-import org.falland.grpc.longlivedstreams.core.subscription.SubscriptionType;
+import org.falland.grpc.longlivedstreams.core.GrpcStream;
+import org.falland.grpc.longlivedstreams.core.streams.StreamType;
 
-public class ServerGrpcSubscription<U> implements GrpcSubscription<U> {
+public class ServerGrpcStream<U> implements GrpcStream<U> {
 
     private final SubscriptionKey subscriptionKey;
-    private final GrpcSubscription<U> delegate;
+    private final GrpcStream<U> delegate;
 
-    public ServerGrpcSubscription(SubscriptionKey subscriptionKey, GrpcSubscription<U> delegate) {
+    public ServerGrpcStream(SubscriptionKey subscriptionKey, GrpcStream<U> delegate) {
         this.subscriptionKey = subscriptionKey;
         this.delegate = delegate;
     }
@@ -18,8 +18,8 @@ public class ServerGrpcSubscription<U> implements GrpcSubscription<U> {
     }
 
     @Override
-    public void processUpdate(U update) {
-        delegate.processUpdate(update);
+    public void onNext(U update) {
+        delegate.onNext(update);
     }
 
     @Override
@@ -38,7 +38,7 @@ public class ServerGrpcSubscription<U> implements GrpcSubscription<U> {
     }
 
     @Override
-    public SubscriptionType type() {
+    public StreamType type() {
         return delegate.type();
     }
 }

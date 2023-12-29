@@ -10,9 +10,9 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyLong;
 
-class ClientSubscriptionObserverTest {
+class ClientControlledStreamObserverTest {
 
-    private ClientSubscriptionObserver<Long> underTest;
+    private ClientControlledStreamObserver<Long> underTest;
     private ClientCallStreamObserver<Long> observer;
 
     @BeforeEach
@@ -20,7 +20,7 @@ class ClientSubscriptionObserverTest {
         //noinspection unchecked
         observer = Mockito.mock(ClientCallStreamObserver.class);
         Mockito.doReturn(true).when(observer).isReady();
-        underTest = new ClientSubscriptionObserver<>(observer);
+        underTest = new ClientControlledStreamObserver<>(observer);
     }
 
     @Test

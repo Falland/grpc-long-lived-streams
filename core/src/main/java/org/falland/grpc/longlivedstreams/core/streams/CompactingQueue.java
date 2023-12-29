@@ -1,4 +1,4 @@
-package org.falland.grpc.longlivedstreams.core.subscription;
+package org.falland.grpc.longlivedstreams.core.streams;
 
 import java.util.Map;
 import java.util.Queue;
@@ -25,7 +25,6 @@ import java.util.function.Function;
  * @param <V> - the type of the value
  */
 public class CompactingQueue<K, V> {
-
     private final Function<V, K> compactionKeyExtractor;
     private final Map<K, V> latestValues = new ConcurrentHashMap<>();
     private final Queue<K> activeKeys = new ConcurrentLinkedQueue<>();

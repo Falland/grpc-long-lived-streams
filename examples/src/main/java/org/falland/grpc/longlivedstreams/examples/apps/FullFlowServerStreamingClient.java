@@ -32,7 +32,7 @@ public class FullFlowServerStreamingClient {
 
         WorldUpdateProcessor updateProcessor = new WorldUpdateProcessor();
         ClientContext clientContext = new StreamingClientContext("localhost", "testClient", port, clientExecutor);
-        StreamingClient client = new StreamingClient(clientContext, List.of(updateProcessor), Duration.ofNanos(10), false);
+        StreamingClient client = new StreamingClient(clientContext, updateProcessor, Duration.ofNanos(10), false);
         client.start();
         Thread.sleep(1000);
         for (int i = 0; i < 10; i++) {

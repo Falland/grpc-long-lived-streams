@@ -1,17 +1,17 @@
-package org.falland.grpc.longlivedstreams.client.streaming;
+package org.falland.grpc.longlivedstreams.server.streaming;
 
-import io.grpc.stub.ClientCallStreamObserver;
-import org.falland.grpc.longlivedstreams.core.SubscriptionObserver;
+import io.grpc.stub.ServerCallStreamObserver;
+import org.falland.grpc.longlivedstreams.core.ControlledStreamObserver;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public class ClientSubscriptionObserver<U> implements SubscriptionObserver<U> {
+public class ServerControlledStreamObserver<U> implements ControlledStreamObserver<U> {
 
-    private final ClientCallStreamObserver<U> observer;
+    private final ServerCallStreamObserver<U> observer;
     //This flag is a guard for onError method. As we need to guarantee onError is never called twice
     private final AtomicBoolean isClosed = new AtomicBoolean(false);
 
-    public ClientSubscriptionObserver(ClientCallStreamObserver<U> observer) {
+    public ServerControlledStreamObserver(ServerCallStreamObserver<U> observer) {
         this.observer = observer;
     }
 
@@ -44,6 +44,6 @@ public class ClientSubscriptionObserver<U> implements SubscriptionObserver<U> {
 
     @Override
     public boolean isOpened() {
-        return !isClosed.get();
+        return !isClosed.get() && !observer.isCancelled();
     }
 }

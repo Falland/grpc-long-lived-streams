@@ -1,29 +1,30 @@
-package org.falland.grpc.longlivedstreams.core.subscription;
+package org.falland.grpc.longlivedstreams.core.streams;
 
-import org.falland.grpc.longlivedstreams.core.SubscriptionObserver;
+import org.falland.grpc.longlivedstreams.core.GrpcStream;
+import org.falland.grpc.longlivedstreams.core.ControlledStreamObserver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.*;
+import java.util.concurrent.locks.LockSupport;
 
-public class FullFlowSubscription<U> implements GrpcSubscription<U> {
+public class FullFlowStream<U> implements GrpcStream<U> {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(FullFlowSubscription.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(FullFlowStream.class);
     public static final YouAreTooSlowException TOO_SLOW_EXCEPTION =
             new YouAreTooSlowException("The server queue is filled, you are not keeping up.");
     private final ExecutorService executor;
-    private final SubscriptionObserver<U> observer;
-    private final Duration coolDownDuration;
+    private final ControlledStreamObserver<U> observer;
+    private final long coolDownNanos;
     private final BlockingQueue<U> updatesQueue;
-
     private volatile boolean isActive = true;
 
-    private FullFlowSubscription(Builder<U> builder) {
+    private FullFlowStream(Builder<U> builder) {
         int queueSize = builder.queueSize;
-        this.observer = Objects.requireNonNull(builder.observer);
-        this.coolDownDuration = Objects.requireNonNull(builder.coolDownDuration);
+        this.observer = builder.observer;
+        this.coolDownNanos = builder.coolDownDuration.toNanos();
         this.updatesQueue = new LinkedBlockingQueue<>(queueSize);
         this.executor = Executors.newSingleThreadExecutor(builder.threadFactory);
 
@@ -31,12 +32,12 @@ public class FullFlowSubscription<U> implements GrpcSubscription<U> {
     }
 
     @Override
-    public SubscriptionType type() {
-        return SubscriptionType.FULL_FLOW;
+    public StreamType type() {
+        return StreamType.FULL_FLOW;
     }
 
     @Override
-    public void processUpdate(U update) {
+    public void onNext(U update) {
         if (!updatesQueue.offer(update)) {
             onError(TOO_SLOW_EXCEPTION);
         }
@@ -46,29 +47,16 @@ public class FullFlowSubscription<U> implements GrpcSubscription<U> {
     //we need to catch throwable as DirectMemoryError is an Error and not Exception
     private void trySendMessage() {
         while (isActive) {
-            try {
-                boolean messageSent = false;
-                if (observer.isReady()) {
-                    messageSent = sendMessage(messageSent);
-                }
-                if (!messageSent) {
-                    TimeUnit.NANOSECONDS.sleep(coolDownDuration.toNanos());
-                }
-            } catch (InterruptedException e) {
-                //we are interrupted, hence the thread should stop, therefore we complete the stream
-                LOGGER.info("Interrupted while waiting on stream to be ready. Closing stream");
-                onCompleted();
-                Thread.currentThread().interrupt();
-            } catch (Exception e) {
-                LOGGER.debug("Error while sending message", e);
-                onError(e);
+            if (!sendMessage()) {
+                //Can be susceptible for spurious wake-ups but for this application it's benign outcome
+                LockSupport.parkNanos(coolDownNanos);
             }
         }
     }
 
-    private boolean sendMessage(boolean messageSent) {
+    private boolean sendMessage() {
         U update = updatesQueue.poll();
-        if (update != null) {
+        if (observer.isReady() && update != null) {
             try {
                 observer.onNext(update);
             } catch (Throwable e) {
@@ -76,9 +64,10 @@ public class FullFlowSubscription<U> implements GrpcSubscription<U> {
                 //Usually this happens due to lack of flow control, too many messages do not fit into gRPC buffer leading to DirectMemoryError
                 LOGGER.debug("Error while handling update {}", update, e);
             }
-            messageSent = true;
+            //We don't want to wait in case the error happened, so we treat it as a sent message
+            return true;
         }
-        return messageSent;
+        return false;
     }
 
     @Override
@@ -103,49 +92,55 @@ public class FullFlowSubscription<U> implements GrpcSubscription<U> {
         executor.shutdownNow();
     }
 
-    public static <U> Builder<U> builder(SubscriptionObserver<U> observer) {
-        return new Builder<>(observer);
+    public static <U> Builder<U> builder() {
+        return new Builder<>();
     }
 
     public static class Builder<U> {
-        private final SubscriptionObserver<U> observer;
+        private ControlledStreamObserver<U> observer;
         private ThreadFactory threadFactory;
         private int queueSize;
         private Duration coolDownDuration;
 
-        public Builder(SubscriptionObserver<U> observer) {
+        public Builder() {
+        }
+
+        public Builder<U> withObserver(ControlledStreamObserver<U> observer) {
+            Objects.requireNonNull(observer, "Observer can't be null");
             this.observer = observer;
+            return this;
         }
 
         public Builder<U> withThreadFactory(ThreadFactory threadFactory) {
+            Objects.requireNonNull(threadFactory, "Thread factory can't be null");
             this.threadFactory = threadFactory;
             return this;
         }
 
         @SuppressWarnings("unused")
         public Builder<U> withQueueSize(int queueSize) {
+            if (queueSize <= 0) {
+                throw new IllegalArgumentException("Queue size can not be less or equal to zero.");
+            }
             this.queueSize = queueSize;
             return this;
         }
 
         /**
          * The duration to wait before trying to send message to StreamObserver once it signaled being not ready
+         * Stream would also wait for cool down duration in case the sending queue is empty
          *
          * @param coolDownDuration - the duration for sending thread to wait before re-attempting send
          * @return - builder
          */
         public Builder<U> withCoolDownDuration(Duration coolDownDuration) {
+            Objects.requireNonNull(coolDownDuration, "Cool down duration can't be null");
             this.coolDownDuration = coolDownDuration;
             return this;
         }
 
-        public FullFlowSubscription<U> build() {
-            Objects.requireNonNull(threadFactory, "Thread factory can't be null");
-            Objects.requireNonNull(coolDownDuration, "Cool down duration can't be null");
-            if (queueSize <= 0) {
-                throw new IllegalArgumentException("Queue size can not be less or equal to zero.");
-            }
-            return new FullFlowSubscription<>(this);
+        public FullFlowStream<U> build() {
+            return new FullFlowStream<>(this);
         }
     }
 }

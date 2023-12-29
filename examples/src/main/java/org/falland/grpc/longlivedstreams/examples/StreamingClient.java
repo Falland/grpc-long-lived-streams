@@ -3,20 +3,19 @@ package org.falland.grpc.longlivedstreams.examples;
 import com.falland.gprc.longlivedstreams.proto.helloworld.v1.Hello;
 import com.falland.gprc.longlivedstreams.proto.helloworld.v1.HelloWorldGrpc;
 import com.falland.gprc.longlivedstreams.proto.helloworld.v1.World;
+import io.grpc.Channel;
 import org.falland.grpc.longlivedstreams.client.AbstractGrpcSubscriptionClient;
 import org.falland.grpc.longlivedstreams.client.ClientContext;
 import org.falland.grpc.longlivedstreams.client.UpdateProcessor;
-import io.grpc.Channel;
 
 import java.time.Duration;
-import java.util.List;
 
 public class StreamingClient extends AbstractGrpcSubscriptionClient<World> {
     private final boolean isThrottling;
 
-    public StreamingClient(ClientContext clientContext, List<UpdateProcessor<World>> updateProcessors,
+    public StreamingClient(ClientContext clientContext, UpdateProcessor<World> updateProcessor,
                               Duration retrySubscriptionDuration, boolean isThrottling) {
-        super(clientContext, updateProcessors, retrySubscriptionDuration);
+        super(clientContext, updateProcessor, retrySubscriptionDuration);
         this.isThrottling = isThrottling;
     }
 

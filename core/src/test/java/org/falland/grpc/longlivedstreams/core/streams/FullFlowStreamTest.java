@@ -1,4 +1,4 @@
-package org.falland.grpc.longlivedstreams.core.subscription;
+package org.falland.grpc.longlivedstreams.core.streams;
 
 import org.falland.grpc.longlivedstreams.core.util.ThreadFactoryImpl;
 import org.junit.jupiter.api.AfterEach;
@@ -13,15 +13,16 @@ import java.util.concurrent.TimeUnit;
 
 import static com.google.common.truth.Truth.assertThat;
 
-class FullFlowSubscriptionTest {
+class FullFlowStreamTest {
 
     private final Duration threadCoolDown = Duration.of(100, ChronoUnit.MILLIS);
-    private final TestSubscriptionObserver<Long> observer = new TestSubscriptionObserver<>();
-    private FullFlowSubscription<Long> underTest;
+    private final TestControlledStreamObserver<Long> observer = new TestControlledStreamObserver<>();
+    private FullFlowStream<Long> underTest;
 
     @BeforeEach
     public void beforeEach() {
-        underTest = FullFlowSubscription.builder(observer)
+        underTest = FullFlowStream.<Long>builder()
+                .withObserver(observer)
                 .withQueueSize(2)
                 .withCoolDownDuration(threadCoolDown)
                 .withThreadFactory(new ThreadFactoryImpl("test-"))
@@ -37,11 +38,11 @@ class FullFlowSubscriptionTest {
     @Test
     @Timeout(1)
     public void testProcessUpdates_shouldCloseWithError_whenQueueSizeIsOverflown() {
-        underTest.processUpdate(1L);
-        underTest.processUpdate(1L);
-        underTest.processUpdate(1L);
+        underTest.onNext(1L);
+        underTest.onNext(1L);
+        underTest.onNext(1L);
         assertThat(observer.getErrorReceived()).isNotNull();
-        assertThat(observer.getErrorReceived()).isEqualTo(FullFlowSubscription.TOO_SLOW_EXCEPTION);
+        assertThat(observer.getErrorReceived()).isEqualTo(FullFlowStream.TOO_SLOW_EXCEPTION);
     }
 
     @Test
@@ -71,8 +72,8 @@ class FullFlowSubscriptionTest {
     public void testSend_shouldSendAllUpdates_whenObserverIsReady() throws InterruptedException {
         observer.setReady(true);
         observer.awaitIsReadyAndGetPhaseNumber();
-        underTest.processUpdate(1L);
-        underTest.processUpdate(1L);
+        underTest.onNext(1L);
+        underTest.onNext(1L);
         var messages = observer.onNextMessages();
         //We will wait here for a bit in case we caught only the first message
         messages = observer.onNextMessages(500);
@@ -82,7 +83,7 @@ class FullFlowSubscriptionTest {
 
     @Test
     public void testGetType_shouldBeFullFlow_always() {
-        assertThat(SubscriptionType.FULL_FLOW).isEqualTo(underTest.type());
+        assertThat(StreamType.FULL_FLOW).isEqualTo(underTest.type());
     }
 
     @Test
