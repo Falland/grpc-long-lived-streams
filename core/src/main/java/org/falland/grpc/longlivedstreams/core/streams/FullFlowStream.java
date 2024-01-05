@@ -55,17 +55,19 @@ public class FullFlowStream<U> implements GrpcStream<U> {
     }
 
     private boolean sendMessage() {
-        U update = updatesQueue.poll();
-        if (observer.isReady() && update != null) {
-            try {
-                observer.onNext(update);
-            } catch (Throwable e) {
-                observer.onError(e);
-                //Usually this happens due to lack of flow control, too many messages do not fit into gRPC buffer leading to DirectMemoryError
-                LOGGER.debug("Error while handling update {}", update, e);
+        if (this.observer.isReady()) {
+            U update = updatesQueue.poll();
+            if (update != null) {
+                try {
+                    observer.onNext(update);
+                } catch (Throwable e) {
+                    observer.onError(e);
+                    //Usually this happens due to lack of flow control, too many messages do not fit into gRPC buffer leading to DirectMemoryError
+                    LOGGER.debug("Error while handling update {}", update, e);
+                }
+                //We don't want to wait in case the error happened, so we treat it as a sent message
+                return true;
             }
-            //We don't want to wait in case the error happened, so we treat it as a sent message
-            return true;
         }
         return false;
     }
