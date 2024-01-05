@@ -190,6 +190,10 @@ public abstract class AbstractGrpcSubscriptionClient<U extends AbstractMessage> 
         }
     }
 
+    protected EnumSet<Code> unrecoverableCodes() {
+        return UNRECOVERABLE_CODES;
+    }
+
     private class GrpcStreamObserver implements StreamObserver<U> {
         private final String clientName;
         private final Channel channel;
@@ -229,11 +233,6 @@ public abstract class AbstractGrpcSubscriptionClient<U extends AbstractMessage> 
             LOGGER.info("Received stream complete for subscription. Resubscribing channel {} for client {}",
                     channel, clientName);
             scheduleSafeResubscribe(channel);
-        }
-
-        protected EnumSet<Code> unrecoverableCodes() {
-            return UNRECOVERABLE_CODES;
-
         }
 
         protected boolean isRecoverable(Throwable error) {
