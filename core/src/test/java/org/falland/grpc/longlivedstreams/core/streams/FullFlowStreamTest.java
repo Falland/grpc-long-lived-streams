@@ -82,6 +82,19 @@ class FullFlowStreamTest {
     }
 
     @Test
+    @Timeout(1)
+    public void testSend_shouldNotLooseUpdate_whenObserverIsNotReady() throws InterruptedException {
+        observer.setReady(false);
+        underTest.onNext(1L);
+        observer.onNextMessages(100L);
+        observer.setReady(true);
+        observer.awaitIsReadyAndGetPhaseNumber();
+        var messages = observer.onNextMessages();
+        assertThat(messages.size()).isEqualTo(1);
+        assertThat(messages).isEqualTo(List.of(1L));
+    }
+
+    @Test
     public void testGetType_shouldBeFullFlow_always() {
         assertThat(StreamType.FULL_FLOW).isEqualTo(underTest.type());
     }
