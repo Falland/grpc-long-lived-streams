@@ -1,5 +1,6 @@
 package org.falland.grpc.longlivedstreams.core.streams;
 
+import io.grpc.stub.CallStreamObserver;
 import org.falland.grpc.longlivedstreams.core.ControlledStreamObserver;
 
 import java.util.ArrayList;
@@ -68,11 +69,11 @@ public class TestControlledStreamObserver<U> implements ControlledStreamObserver
         return errorReceived;
     }
 
-    @Override
-    public boolean isReady() {
-        isReadyCallPhaser.arrive();
-        return isReady;
-    }
+//    @Override
+//    public boolean isReady() {
+//        isReadyCallPhaser.arrive();
+//        return isReady;
+//    }
 
     @Override
     public boolean isOpened() {

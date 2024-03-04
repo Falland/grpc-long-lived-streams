@@ -1,77 +1,90 @@
 package org.falland.grpc.longlivedstreams.client;
 
-import com.google.protobuf.AbstractMessage;
-import io.grpc.Channel;
-import io.grpc.ConnectivityState;
-import io.grpc.Context;
-import io.grpc.ManagedChannel;
-import io.grpc.ManagedChannelBuilder;
+import io.grpc.*;
 import io.grpc.Status.Code;
-import io.grpc.StatusRuntimeException;
 import io.grpc.stub.StreamObserver;
+import org.falland.grpc.longlivedstreams.client.streaming.ClientReceivingObserver;
 import org.falland.grpc.longlivedstreams.core.util.ThreadFactoryImpl;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.EnumSet;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.Semaphore;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static io.grpc.Status.Code.FAILED_PRECONDITION;
-import static io.grpc.Status.Code.INVALID_ARGUMENT;
-import static io.grpc.Status.Code.OUT_OF_RANGE;
-import static io.grpc.Status.Code.PERMISSION_DENIED;
-import static io.grpc.Status.Code.UNAUTHENTICATED;
-import static io.grpc.Status.Code.UNIMPLEMENTED;
+import static io.grpc.Status.Code.*;
 
-public abstract class AbstractGrpcSubscriptionClient<U extends AbstractMessage> implements GrpcConnectionListener {
+/**
+ * This class provides the basic functionality for the gRPC client streaming, both server and client based.
+ * The class supports automatic reconnects when error and completion is received.
+ * In case of erroneous completion of the stream, client can differentiate between recoverable and unrecoverable errors, to see if the reconnect is feasible.
+ * The unrecoverable errors are defined by {@link #unrecoverableCodes()} and checked in the {@link #isRecoverable(Throwable)}
+ * Implementation class can override the behavior of checking the error codes to follow any custom logic
+ * <p>
+ * In case of regular completion, i.e. {@link StreamObserver#onCompleted()}, client will not reconnect by default.
+ * There's a configuration parameter to make client to reconnect on completion.
+ * <p>
+ * The implementation of this class should only provide the {@link #subscribe(Channel)} and {@link #unsubscribe()} methods implementations
+ * {@link #subscribe(Channel)} method is expected to contain the gRPC call and creation of the streamers
+ * {@link #unsubscribe()} method is expected to contain any logic to clean up the state after the disconnect
+ * <p>
+ * The reconnection logic supports reopening channel in case {@link ClientConfiguration#maxAttemptsBeforeReconnect()} is reached.
+ * This is done to break sticky session within gRPC connectivity and retry connecting to potentially different host.
+ * Since we are working with long-lived streams this feature is a must for streams that spans across multiple hours/days.
+ * <p>
+ * The client would ensure to execute re-subscription only once in case of concurrent call (can happen due to multitude of reasons since the re-subscribe call can be called from multiple places).
+ * Therefor it is always guaranteed to have no mre than 1 active stream in any moment in time.
+ * <p>
+ * For the finer grained control of the threads spawned by the client, the client can provide custom executor.
+ * In this case gRPC channel would use the passed executor instead of the global shared one.
+ * Be careful with custom executors, incorrect configuration of the executor can lead to excessive use of resources or blocked code execution.
+ * Always test your set-up and do the customisations only after thorough testing.
+ * @param <U> stream message type
+ */
+public abstract class AbstractGrpcSubscriptionClient<U> {
     private static final Logger LOGGER = LoggerFactory.getLogger(AbstractGrpcSubscriptionClient.class);
     public static final EnumSet<Code> UNRECOVERABLE_CODES = EnumSet.of(UNIMPLEMENTED, UNAUTHENTICATED, FAILED_PRECONDITION, PERMISSION_DENIED, INVALID_ARGUMENT, OUT_OF_RANGE);
-    private final ClientContext clientContext;
+    private final ClientConfiguration clientConfiguration;
     private final UpdateProcessor<U> processor;
     private final ScheduledExecutorService connectionManagerThread;
     private final Duration retrySubscriptionDuration;
+    private final boolean reconnectOnComplete;
     //We can allow only one subscription per client
     private final Semaphore subscribePermits = new Semaphore(1);
-    private final AtomicBoolean firstSubscriptionAttempt = new AtomicBoolean(true);
     private final AtomicInteger reconnectionAttempts = new AtomicInteger();
-    @SuppressWarnings("FieldCanBeLocal")
-    private ChannelStateListenerLogger logger;
     private volatile ScheduledFuture<?> reSubscriptionFuture;
     private volatile ManagedChannel channel;
     private volatile boolean isActive = true;
 
-    protected AbstractGrpcSubscriptionClient(ClientContext clientContext,
+    protected AbstractGrpcSubscriptionClient(ClientConfiguration clientConfiguration,
                                              UpdateProcessor<U> processor,
                                              Duration retrySubscriptionDuration) {
-        this.clientContext = clientContext;
+        this.clientConfiguration = clientConfiguration;
         this.processor = processor;
+        this.reconnectOnComplete = clientConfiguration.reconnectOnComplete();
         this.retrySubscriptionDuration = retrySubscriptionDuration;
         this.connectionManagerThread = Executors.newSingleThreadScheduledExecutor(
-                new ThreadFactoryImpl(clientContext.clientName() + "-connection-manager-thread-"));
+                new ThreadFactoryImpl(clientConfiguration.clientName() + "-connection-manager-thread-"));
     }
 
-    public ClientContext getClientContext() {
-        return clientContext;
+    public ClientConfiguration getClientConfiguration() {
+        return clientConfiguration;
     }
 
     public void start() {
-        openChannel();
+        if (channel == null) {
+            openChannel();
+        }
     }
 
     /**
      * Initiates an orderly shutdown in which preexisting calls continue but new calls are immediately cancelled.
      */
     public void stop() {
-        closeChannel();
         connectionManagerThread.submit(this::safeUnsubscribe);
         connectionManagerThread.shutdown();
+        closeChannel();
     }
 
     /**
@@ -79,9 +92,9 @@ public abstract class AbstractGrpcSubscriptionClient<U extends AbstractMessage> 
      */
     @SuppressWarnings("unused")
     public void stopNow() {
-        closeChannelNow();
         connectionManagerThread.submit(this::safeUnsubscribe);
-        connectionManagerThread.shutdown();
+        connectionManagerThread.shutdownNow();
+        closeChannelNow();
     }
 
     protected abstract void subscribe(Channel channel);
@@ -96,19 +109,16 @@ public abstract class AbstractGrpcSubscriptionClient<U extends AbstractMessage> 
     @SuppressWarnings("rawtypes")
     protected void openChannel() {
         ManagedChannelBuilder channelBuilder =
-                ManagedChannelBuilder.forAddress(clientContext.hostName(), clientContext.port())
-                        .maxInboundMessageSize(clientContext.maxInboundMessageSize());
-        if (clientContext.usePlaintext()) {
+                ManagedChannelBuilder.forAddress(clientConfiguration.hostName(), clientConfiguration.port())
+                        .maxInboundMessageSize(clientConfiguration.maxInboundMessageSize());
+        if (clientConfiguration.usePlaintext()) {
             channelBuilder.usePlaintext();
         }
-        if (clientContext.executor() != null) {
-            channelBuilder.executor(clientContext.executor());
+        if (clientConfiguration.executor() != null) {
+            channelBuilder.executor(clientConfiguration.executor());
         }
-        this.reconnectionAttempts.set(clientContext.maxAttemptsBeforeReconnect());
-        this.firstSubscriptionAttempt.set(true);
+        this.reconnectionAttempts.set(clientConfiguration.maxAttemptsBeforeReconnect());
         this.channel = channelBuilder.build();
-        logger = new ChannelStateListenerLogger(channel, true, clientContext.clientName());
-        logger.addGrpcConnectionListener(this);
         if (!connectionManagerThread.isShutdown()) {
             connectionManagerThread.submit(() -> safeSubscribe(channel));
         }
@@ -133,7 +143,7 @@ public abstract class AbstractGrpcSubscriptionClient<U extends AbstractMessage> 
                 subscribe(channel);
             }
         } catch (Exception e) {
-            LOGGER.error("Error during subscription for client {}. Reconnecting", clientContext.clientName(), e);
+            LOGGER.error("Error during subscription for client {}. Reconnecting", clientConfiguration.clientName(), e);
             scheduleSafeResubscribe(channel);
         }
     }
@@ -162,7 +172,7 @@ public abstract class AbstractGrpcSubscriptionClient<U extends AbstractMessage> 
         try {
             unsubscribe();
         } catch (Exception e) {
-            LOGGER.error("Error during un-subscription for client {}. Ignoring", clientContext.clientName(), e);
+            LOGGER.error("Error during un-subscription for client {}. Ignoring", clientConfiguration.clientName(), e);
         } finally {
             subscribePermits.drainPermits();
             subscribePermits.release();
@@ -179,70 +189,49 @@ public abstract class AbstractGrpcSubscriptionClient<U extends AbstractMessage> 
         }
     }
 
-    public final StreamObserver<U> createResponseObserver(Channel stubChannel) {
-        return new GrpcStreamObserver(clientContext.clientName(), stubChannel);
+    public final StreamObserver<U> simpleObserver() {
+        return new ClientReceivingObserver<Void, U>(processor, this::handleObserverError,
+                this::handleObserverCompletion, () -> {});
     }
 
-    @Override
-    public void onStateChanged(String channelName, ConnectivityState state) {
-        if (state == ConnectivityState.IDLE && !firstSubscriptionAttempt.getAndSet(false)) {
-            scheduleSafeResubscribe(channel);
-        }
+    public final StreamObserver<U> clientStreamingCallObserver(Runnable onReadyHandler) {
+        return new ClientReceivingObserver<Void, U>(processor, this::handleObserverError,
+                this::handleObserverCompletion, onReadyHandler);
     }
 
     protected EnumSet<Code> unrecoverableCodes() {
         return UNRECOVERABLE_CODES;
     }
 
-    private class GrpcStreamObserver implements StreamObserver<U> {
-        private final String clientName;
-        private final Channel channel;
-
-        GrpcStreamObserver(String clientName, Channel channel) {
-            this.clientName = clientName;
-            this.channel = channel;
-        }
-
-        @Override
-        public void onNext(U update) {
-            LOGGER.debug("Received subscription response {}", update);
-            try {
-               processor.processUpdate(update);
-            } catch (Exception e) {
-                LOGGER.error("Error while processing update {}", update, e);
-            }
-        }
-
-        @Override
-        public void onError(Throwable throwable) {
-            if (isRecoverable(throwable)) {
-                LOGGER.debug("Received error for subscription. Resubscribing channel {} for client {}",
-                        channel, clientName, throwable);
-                scheduleSafeResubscribe(channel);
-            } else {
-                isActive = false;
-                LOGGER.error("Received unrecoverable error. Stopping channel {} for client {}.",
-                        channel, clientName, throwable);
-                onUnrecoverableError(throwable);
-                submitSafeUnsubscribe();
-            }
-        }
-
-        @Override
-        public void onCompleted() {
-            LOGGER.info("Received stream complete for subscription. Resubscribing channel {} for client {}",
-                    channel, clientName);
+    private void handleObserverCompletion() {
+        LOGGER.info("Received stream complete for subscription. Resubscribing channel {} for client {}",
+                channel, clientConfiguration.clientName());
+        if (reconnectOnComplete) {
             scheduleSafeResubscribe(channel);
         }
+    }
 
-        protected boolean isRecoverable(Throwable error) {
-            if (error instanceof StatusRuntimeException) {
-                StatusRuntimeException statusException = ((StatusRuntimeException) error);
-                Code code = statusException.getStatus().getCode();
-                return !unrecoverableCodes().contains(code);
-            }
-            //If not status exception then we consider the error recoverable
-            return true;
+    private void handleObserverError(Throwable t) {
+        if (isRecoverable(t)) {
+            LOGGER.debug("Received error for subscription. Resubscribing channel {} for client {}",
+                    channel, clientConfiguration.clientName(), t);
+            scheduleSafeResubscribe(channel);
+        } else {
+            isActive = false;
+            LOGGER.error("Received unrecoverable error. Stopping channel {} for client {}.",
+                    channel, clientConfiguration.clientName(), t);
+            onUnrecoverableError(t);
+            submitSafeUnsubscribe();
         }
+    }
+
+    protected boolean isRecoverable(Throwable error) {
+        if (error instanceof StatusRuntimeException) {
+            StatusRuntimeException statusException = ((StatusRuntimeException) error);
+            Code code = statusException.getStatus().getCode();
+            return !unrecoverableCodes().contains(code);
+        }
+        //If not status exception then we consider the error recoverable
+        return true;
     }
 }
