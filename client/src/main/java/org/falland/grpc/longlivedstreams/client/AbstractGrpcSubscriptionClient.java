@@ -2,6 +2,7 @@ package org.falland.grpc.longlivedstreams.client;
 
 import io.grpc.*;
 import io.grpc.Status.Code;
+import io.grpc.stub.ClientCallStreamObserver;
 import io.grpc.stub.StreamObserver;
 import org.falland.grpc.longlivedstreams.client.streaming.ClientReceivingObserver;
 import org.falland.grpc.longlivedstreams.core.util.ThreadFactoryImpl;
@@ -12,6 +13,7 @@ import java.time.Duration;
 import java.util.EnumSet;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 
 import static io.grpc.Status.Code.*;
 
@@ -40,13 +42,15 @@ import static io.grpc.Status.Code.*;
  * In this case gRPC channel would use the passed executor instead of the global shared one.
  * Be careful with custom executors, incorrect configuration of the executor can lead to excessive use of resources or blocked code execution.
  * Always test your set-up and do the customisations only after thorough testing.
- * @param <U> stream message type
+ * @param <Req> Request message type
+ * @param <Resp> Response message type
  */
-public abstract class AbstractGrpcSubscriptionClient<U> {
+public abstract class AbstractGrpcSubscriptionClient<Req, Resp> {
     private static final Logger LOGGER = LoggerFactory.getLogger(AbstractGrpcSubscriptionClient.class);
     public static final EnumSet<Code> UNRECOVERABLE_CODES = EnumSet.of(UNIMPLEMENTED, UNAUTHENTICATED, FAILED_PRECONDITION, PERMISSION_DENIED, INVALID_ARGUMENT, OUT_OF_RANGE);
     private final ClientConfiguration clientConfiguration;
-    private final UpdateProcessor<U> processor;
+
+    private final UpdateProcessor<Resp> processor;
     private final ScheduledExecutorService connectionManagerThread;
     private final Duration retrySubscriptionDuration;
     private final boolean reconnectOnComplete;
@@ -58,7 +62,7 @@ public abstract class AbstractGrpcSubscriptionClient<U> {
     private volatile boolean isActive = true;
 
     protected AbstractGrpcSubscriptionClient(ClientConfiguration clientConfiguration,
-                                             UpdateProcessor<U> processor,
+                                             UpdateProcessor<Resp> processor,
                                              Duration retrySubscriptionDuration) {
         this.clientConfiguration = clientConfiguration;
         this.processor = processor;
@@ -189,14 +193,20 @@ public abstract class AbstractGrpcSubscriptionClient<U> {
         }
     }
 
-    public final StreamObserver<U> simpleObserver() {
-        return new ClientReceivingObserver<Void, U>(processor, this::handleObserverError,
-                this::handleObserverCompletion, () -> {});
+    public final StreamObserver<Resp> simpleObserver() {
+        return new ClientReceivingObserver<>(processor, this::handleObserverError,
+                this::handleObserverCompletion, () -> {
+        });
     }
 
-    public final StreamObserver<U> clientStreamingCallObserver(Runnable onReadyHandler) {
-        return new ClientReceivingObserver<Void, U>(processor, this::handleObserverError,
+    public final StreamObserver<Resp> clientStreamingCallObserver(Runnable onReadyHandler) {
+        return new ClientReceivingObserver<>(processor, this::handleObserverError,
                 this::handleObserverCompletion, onReadyHandler);
+    }
+
+    public final StreamObserver<Resp> clientStreamingCallObserver(Runnable onReadyHandler, Consumer<ClientCallStreamObserver<Req>> onBeforeStart) {
+        return new ClientReceivingObserver<>(processor, this::handleObserverError,
+                this::handleObserverCompletion, onReadyHandler, onBeforeStart);
     }
 
     protected EnumSet<Code> unrecoverableCodes() {

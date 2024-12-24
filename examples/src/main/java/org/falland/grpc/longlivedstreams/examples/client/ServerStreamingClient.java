@@ -12,7 +12,7 @@ import org.falland.grpc.longlivedstreams.examples.apps.utils.Client;
 import java.time.Duration;
 import java.util.List;
 
-public class ServerStreamingClient extends AbstractGrpcSubscriptionClient<World> implements Client<World> {
+public class ServerStreamingClient extends AbstractGrpcSubscriptionClient<Void, World> implements Client<World> {
     private final ResponseStrategy responseStrategy;
     private final WorldUpdateProcessor updateProcessor;
 

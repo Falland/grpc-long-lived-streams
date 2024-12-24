@@ -24,19 +24,29 @@ import java.util.function.Consumer;
  */
 public class ClientReceivingObserver<Req, Resp> implements ClientResponseObserver<Req, Resp> {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClientReceivingObserver.class);
+
     private final UpdateProcessor<Resp> updateProcessor;
     private final Consumer<Throwable> errorHandler;
     private final Runnable completionHandler;
     private final Runnable onReadyHandler;
+    private final Consumer<ClientCallStreamObserver<Req>> onBeforeStart;
 
     public ClientReceivingObserver(UpdateProcessor<Resp> updateProcessor,
-                            Consumer<Throwable> errorHandler,
-                            Runnable completionHandler,
-                            Runnable onReadyHandler) {
+                                   Consumer<Throwable> errorHandler,
+                                   Runnable completionHandler,
+                                   Runnable onReadyHandler, Consumer<ClientCallStreamObserver<Req>> onBeforeStart) {
         this.updateProcessor = updateProcessor;
         this.errorHandler = errorHandler;
         this.completionHandler = completionHandler;
         this.onReadyHandler = onReadyHandler;
+        this.onBeforeStart = onBeforeStart;
+    }
+
+    public ClientReceivingObserver(UpdateProcessor<Resp> updateProcessor,
+                                   Consumer<Throwable> errorHandler,
+                                   Runnable completionHandler,
+                                   Runnable onReadyHandler) {
+        this(updateProcessor, errorHandler, completionHandler, onReadyHandler, (ignored) -> {});
     }
 
     @Override
@@ -62,5 +72,6 @@ public class ClientReceivingObserver<Req, Resp> implements ClientResponseObserve
     @Override
     public void beforeStart(ClientCallStreamObserver<Req> requestStream) {
         requestStream.setOnReadyHandler(onReadyHandler);
+        onBeforeStart.accept(requestStream);
     }
 }

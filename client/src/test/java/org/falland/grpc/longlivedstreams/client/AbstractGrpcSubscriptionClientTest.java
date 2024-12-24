@@ -27,7 +27,7 @@ class AbstractGrpcSubscriptionClientTest {
     private UpdateProcessor<Long> updateProcessor;
     private Duration retrySubscritionDuration;
 
-    private AbstractGrpcSubscriptionClient<Long> simpleTestClient;
+    private AbstractGrpcSubscriptionClient<Void, Long> simpleTestClient;
 
     @SuppressWarnings("unchecked")
     @BeforeEach
@@ -185,7 +185,7 @@ class AbstractGrpcSubscriptionClientTest {
         assertEquals(2, simpleSubscriptionsCount.get());
     }
 
-    private class TestSimpleGrpcClient extends AbstractGrpcSubscriptionClient<Long> {
+    private class TestSimpleGrpcClient extends AbstractGrpcSubscriptionClient<Void, Long> {
 
         protected TestSimpleGrpcClient(ClientConfiguration clientConfiguration, UpdateProcessor<Long> processor, Duration retrySubscriptionDuration) {
             super(clientConfiguration, processor, retrySubscriptionDuration);

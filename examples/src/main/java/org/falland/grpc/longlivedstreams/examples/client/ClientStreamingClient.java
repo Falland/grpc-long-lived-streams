@@ -15,7 +15,7 @@ import org.falland.grpc.longlivedstreams.core.streams.BackpressingStreamObserver
 
 import java.time.Duration;
 
-public class ClientStreamingClient extends AbstractGrpcSubscriptionClient<World> {
+public class ClientStreamingClient extends AbstractGrpcSubscriptionClient<Void, World> {
     private volatile BackpressingStreamObserver<Hello> stream;
 
     public ClientStreamingClient(ClientConfiguration clientContext, UpdateProcessor<World> updateProcessor,
