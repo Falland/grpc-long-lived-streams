@@ -84,11 +84,15 @@ public abstract class AbstractGrpcSubscriptionClient<Req, Resp> {
 
     /**
      * Initiates an orderly shutdown in which preexisting calls continue but new calls are immediately cancelled.
+     *
+     * @return {@link Future} which is resolved when stop is gracefully finished
      */
-    public void stop() {
-        connectionManagerThread.submit(this::safeUnsubscribe);
+    public Future<?> stop() {
+        Future<?> submit = connectionManagerThread.submit(this::safeUnsubscribe);
         connectionManagerThread.shutdown();
         closeChannel();
+
+        return submit;
     }
 
     /**

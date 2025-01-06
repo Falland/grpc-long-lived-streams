@@ -10,6 +10,7 @@ import org.falland.grpc.longlivedstreams.examples.apps.utils.Client;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class NaiveClient implements Client<World> {
@@ -57,8 +58,8 @@ public class NaiveClient implements Client<World> {
     }
 
     @Override
-    public void stop() {
-
+    public Future<?> stop() {
+        return null;
     }
 
     public void awaitOnComplete(int count, Duration maxAwaitTime) throws InterruptedException {
