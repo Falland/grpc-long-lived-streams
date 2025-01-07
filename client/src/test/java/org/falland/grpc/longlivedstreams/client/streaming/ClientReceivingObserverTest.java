@@ -24,8 +24,9 @@ class ClientReceivingObserverTest {
         errorHandler = mock(Consumer.class);
         completionHandler = mock(Runnable.class);
         onReadyHandler = mock(Runnable.class);
+        Consumer<ClientCallStreamObserver<Long>> onBeforeStart = mock(Consumer.class);
 
-        underTest = new ClientReceivingObserver<>(processor, errorHandler, completionHandler, onReadyHandler);
+        underTest = new ClientReceivingObserver<>(processor, errorHandler, completionHandler, onReadyHandler, onBeforeStart);
     }
 
     @Test

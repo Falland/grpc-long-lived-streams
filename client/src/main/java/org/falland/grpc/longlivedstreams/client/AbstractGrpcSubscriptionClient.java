@@ -87,12 +87,12 @@ public abstract class AbstractGrpcSubscriptionClient<Req, Resp> {
      *
      * @return {@link Future} which is resolved when stop is gracefully finished
      */
-    public Future<?> stop() {
-        Future<?> submit = connectionManagerThread.submit(this::safeUnsubscribe);
+    public CompletableFuture<Void> stop() {
+        CompletableFuture<Void> future = CompletableFuture.runAsync(this::safeUnsubscribe, connectionManagerThread);
         connectionManagerThread.shutdown();
         closeChannel();
 
-        return submit;
+        return future;
     }
 
     /**
@@ -199,15 +199,22 @@ public abstract class AbstractGrpcSubscriptionClient<Req, Resp> {
 
     public final StreamObserver<Resp> simpleObserver() {
         return new ClientReceivingObserver<>(processor, this::handleObserverError,
-                this::handleObserverCompletion, () -> {
-        });
+                this::handleObserverCompletion, () -> {}, ignored -> {});
     }
 
     public final StreamObserver<Resp> clientStreamingCallObserver(Runnable onReadyHandler) {
         return new ClientReceivingObserver<>(processor, this::handleObserverError,
-                this::handleObserverCompletion, onReadyHandler);
+                this::handleObserverCompletion, onReadyHandler, ignored -> {});
     }
 
+    /**
+     * Use this call when outgoing stream needs to be configured or decorated before actual streaming starts.
+     * This is recommended for bidirectional streaming.
+     *
+     * @param onReadyHandler callback to be invoked when the client stream is ready
+     * @param onBeforeStart callback, which is invoked right before streaming is established
+     * @return Outgoing stream
+     */
     public final StreamObserver<Resp> clientStreamingCallObserver(Runnable onReadyHandler, Consumer<ClientCallStreamObserver<Req>> onBeforeStart) {
         return new ClientReceivingObserver<>(processor, this::handleObserverError,
                 this::handleObserverCompletion, onReadyHandler, onBeforeStart);
@@ -240,8 +247,7 @@ public abstract class AbstractGrpcSubscriptionClient<Req, Resp> {
     }
 
     protected boolean isRecoverable(Throwable error) {
-        if (error instanceof StatusRuntimeException) {
-            StatusRuntimeException statusException = ((StatusRuntimeException) error);
+        if (error instanceof StatusRuntimeException statusException) {
             Code code = statusException.getStatus().getCode();
             return !unrecoverableCodes().contains(code);
         }

@@ -42,13 +42,6 @@ public class ClientReceivingObserver<Req, Resp> implements ClientResponseObserve
         this.onBeforeStart = onBeforeStart;
     }
 
-    public ClientReceivingObserver(UpdateProcessor<Resp> updateProcessor,
-                                   Consumer<Throwable> errorHandler,
-                                   Runnable completionHandler,
-                                   Runnable onReadyHandler) {
-        this(updateProcessor, errorHandler, completionHandler, onReadyHandler, (ignored) -> {});
-    }
-
     @Override
     public void onNext(Resp update) {
         try {
