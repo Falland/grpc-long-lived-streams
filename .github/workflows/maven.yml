@@ -10,11 +10,11 @@ jobs:
       runs-on: ubuntu-latest
       steps:
       -  uses: actions/checkout@v3
-      -  name: Set up JDK 17
+      -  name: Set up JDK 21
          uses: actions/setup-java@v3
          with:
-            java-version: 17
-            distribution: "zulu" # Default for v1
+            java-version: 21
+            distribution: "liberica"
       -  name: Build with Maven
          run: mvn --no-transfer-progress package --file pom.xml
       -  name: Upload coverage report
