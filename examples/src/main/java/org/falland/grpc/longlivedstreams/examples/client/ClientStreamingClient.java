@@ -4,7 +4,6 @@ import com.falland.gprc.longlivedstreams.proto.helloworld.v1.Hello;
 import com.falland.gprc.longlivedstreams.proto.helloworld.v1.HelloWorldGrpc;
 import com.falland.gprc.longlivedstreams.proto.helloworld.v1.World;
 import io.grpc.Channel;
-import io.grpc.stub.CallStreamObserver;
 import org.falland.grpc.longlivedstreams.client.AbstractGrpcSubscriptionClient;
 import org.falland.grpc.longlivedstreams.client.ClientConfiguration;
 import org.falland.grpc.longlivedstreams.client.UpdateProcessor;
@@ -15,7 +14,7 @@ import org.falland.grpc.longlivedstreams.core.streams.BackpressingStreamObserver
 
 import java.time.Duration;
 
-public class ClientStreamingClient extends AbstractGrpcSubscriptionClient<World> {
+public class ClientStreamingClient extends AbstractGrpcSubscriptionClient<Hello, World> {
     private volatile BackpressingStreamObserver<Hello> stream;
 
     public ClientStreamingClient(ClientConfiguration clientContext, UpdateProcessor<World> updateProcessor,
@@ -26,12 +25,17 @@ public class ClientStreamingClient extends AbstractGrpcSubscriptionClient<World>
     @Override
     protected void subscribe(Channel channel) {
         OnReadyHandlerForwarder forwarder = new OnReadyHandlerForwarder();
-        var clientStream = HelloWorldGrpc.newStub(channel).sayClientStreaming(this.clientStreamingCallObserver(forwarder));
-        stream = BackpressingStreamObserver.<Hello>builder()
-                .withObserver(new OnReadyHandlerForwardingStreamObserver<>((CallStreamObserver<Hello>) clientStream, forwarder))
-                .withStrategy(new ExceptionOnOverflow<>(10))
-                .build();
 
+        //noinspection ResultOfMethodCallIgnored
+        HelloWorldGrpc.newStub(channel).sayClientStreaming(this.clientStreamingCallObserver(forwarder, clientStream -> {
+            // The outgoing stream is decorated in the callback
+            // to make sure that by the time streaming starts
+            // the outgoing stream is fully configured
+            stream = BackpressingStreamObserver.<Hello>builder()
+                    .withObserver(new OnReadyHandlerForwardingStreamObserver<>(clientStream, forwarder))
+                    .withStrategy(new ExceptionOnOverflow<>(10))
+                    .build();
+        }));
     }
 
     public void publishMessage(Hello message) {

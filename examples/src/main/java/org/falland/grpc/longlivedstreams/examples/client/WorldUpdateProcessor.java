@@ -15,6 +15,7 @@ public class WorldUpdateProcessor implements UpdateProcessor<World> {
     private static final ThreadLocalRandom rnd = ThreadLocalRandom.current();
 
     private final List<World> messages = new CopyOnWriteArrayList<>();
+
     @Override
     public void processUpdate(World update) {
         messages.add(update);
